@@ -159,6 +159,7 @@ interface ClaudeFormFieldsProps {
   onLocalProxyHeadersOverrideChange: (value: string) => void;
   localProxyBodyOverride: string;
   onLocalProxyBodyOverrideChange: (value: string) => void;
+  connectionReadOnly?: boolean;
 }
 
 export function ClaudeFormFields({
@@ -224,6 +225,7 @@ export function ClaudeFormFields({
   onLocalProxyHeadersOverrideChange,
   localProxyBodyOverride,
   onLocalProxyBodyOverrideChange,
+  connectionReadOnly = false,
 }: ClaudeFormFieldsProps) {
   const { t } = useTranslation();
   const hasRequestOverrides = Boolean(
@@ -710,6 +712,7 @@ export function ClaudeFormFields({
           websiteUrl={websiteUrl}
           isPartner={isPartner}
           partnerPromotionKey={partnerPromotionKey}
+          disabled={connectionReadOnly}
         />
       )}
 
@@ -777,6 +780,7 @@ export function ClaudeFormFields({
           showFullUrlToggle={showEndpointTools && !isXaiOauthPreset}
           isFullUrl={isFullUrl}
           onFullUrlChange={onFullUrlChange}
+          disabled={connectionReadOnly}
         />
       )}
 

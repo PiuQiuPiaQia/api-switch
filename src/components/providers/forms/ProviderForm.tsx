@@ -221,6 +221,7 @@ type LocalProxyRequestOverridesBuildResult = ReturnType<
 export interface ProviderFormProps {
   appId: AppId;
   providerId?: string;
+  formId?: string;
   submitLabel: string;
   onSubmit: (values: ProviderFormValues) => Promise<void> | void;
   onCancel: () => void;
@@ -238,6 +239,9 @@ export interface ProviderFormProps {
     iconColor?: string;
   };
   showButtons?: boolean;
+  showIdentityFields?: boolean;
+  suppressCommonConfigNotice?: boolean;
+  connectionReadOnly?: boolean;
   isProxyTakeover?: boolean;
 }
 
@@ -262,7 +266,11 @@ function ProviderFormFull({
   onManageUniversalProviders,
   onSubmittingChange,
   initialData,
+  formId = "provider-form",
   showButtons = true,
+  showIdentityFields = true,
+  suppressCommonConfigNotice = false,
+  connectionReadOnly = false,
   isProxyTakeover = false,
 }: ProviderFormProps) {
   if (appId === "claude-desktop") {
@@ -274,7 +282,9 @@ function ProviderFormFull({
   const queryClient = useQueryClient();
   const { data: settingsData } = useSettingsQuery();
   const showCommonConfigNotice =
-    settingsData != null && settingsData.commonConfigConfirmed !== true;
+    !suppressCommonConfigNotice &&
+    settingsData != null &&
+    settingsData.commonConfigConfirmed !== true;
   const isDarkMode = useDarkMode();
 
   const handleCommonConfigConfirm = async () => {
@@ -1956,7 +1966,7 @@ function ProviderFormFull({
     <>
       <Form {...form}>
         <form
-          id="provider-form"
+          id={formId}
           onSubmit={form.handleSubmit(handleSubmit)}
           className="space-y-6 glass rounded-xl p-6 border border-white/10"
         >
@@ -1972,217 +1982,225 @@ function ProviderFormFull({
             />
           )}
 
-          <BasicFormFields
-            form={form}
-            beforeNameSlot={
-              appId === "opencode" && !isAnyOmoCategory ? (
-                <div className="space-y-2">
-                  <Label htmlFor="opencode-key">
-                    {t("opencode.providerKey")}
-                    <span className="text-destructive ml-1">*</span>
-                  </Label>
-                  <Input
-                    id="opencode-key"
-                    value={opencodeForm.opencodeProviderKey}
-                    onChange={(e) =>
-                      opencodeForm.setOpencodeProviderKey(
-                        e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
-                      )
-                    }
-                    placeholder={t("opencode.providerKeyPlaceholder")}
-                    disabled={
-                      isProviderKeyLocked || isProviderKeyLockStateLoading
-                    }
-                    className={
-                      (additiveExistingProviderKeys.includes(
-                        opencodeForm.opencodeProviderKey,
-                      ) &&
-                        !isProviderKeyLocked) ||
-                      (opencodeForm.opencodeProviderKey.trim() !== "" &&
-                        !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+          {showIdentityFields && (
+            <BasicFormFields
+              form={form}
+              beforeNameSlot={
+                appId === "opencode" && !isAnyOmoCategory ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="opencode-key">
+                      {t("opencode.providerKey")}
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+                    <Input
+                      id="opencode-key"
+                      value={opencodeForm.opencodeProviderKey}
+                      onChange={(e) =>
+                        opencodeForm.setOpencodeProviderKey(
+                          e.target.value
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]/g, ""),
+                        )
+                      }
+                      placeholder={t("opencode.providerKeyPlaceholder")}
+                      disabled={
+                        isProviderKeyLocked || isProviderKeyLockStateLoading
+                      }
+                      className={
+                        (additiveExistingProviderKeys.includes(
                           opencodeForm.opencodeProviderKey,
-                        ))
-                        ? "border-destructive"
-                        : ""
-                    }
-                  />
-                  {additiveExistingProviderKeys.includes(
-                    opencodeForm.opencodeProviderKey,
-                  ) &&
-                    !isProviderKeyLocked && (
-                      <p className="text-xs text-destructive">
-                        {t("opencode.providerKeyDuplicate")}
-                      </p>
-                    )}
-                  {opencodeForm.opencodeProviderKey.trim() !== "" &&
-                    !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                        ) &&
+                          !isProviderKeyLocked) ||
+                        (opencodeForm.opencodeProviderKey.trim() !== "" &&
+                          !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                            opencodeForm.opencodeProviderKey,
+                          ))
+                          ? "border-destructive"
+                          : ""
+                      }
+                    />
+                    {additiveExistingProviderKeys.includes(
                       opencodeForm.opencodeProviderKey,
-                    ) && (
-                      <p className="text-xs text-destructive">
-                        {t("opencode.providerKeyInvalid")}
-                      </p>
-                    )}
-                  {!(
-                    additiveExistingProviderKeys.includes(
-                      opencodeForm.opencodeProviderKey,
-                    ) && !isProviderKeyLocked
-                  ) &&
-                    (opencodeForm.opencodeProviderKey.trim() === "" ||
-                      /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                    ) &&
+                      !isProviderKeyLocked && (
+                        <p className="text-xs text-destructive">
+                          {t("opencode.providerKeyDuplicate")}
+                        </p>
+                      )}
+                    {opencodeForm.opencodeProviderKey.trim() !== "" &&
+                      !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
                         opencodeForm.opencodeProviderKey,
-                      )) && (
-                      <p className="text-xs text-muted-foreground">
-                        {isProviderKeyLocked
-                          ? t("opencode.providerKeyLockedHint", {
-                              defaultValue:
-                                "该供应商已添加到应用配置中，供应商标识不可修改",
-                            })
-                          : t("opencode.providerKeyHint")}
-                      </p>
-                    )}
-                </div>
-              ) : appId === "openclaw" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="openclaw-key">
-                    {t("openclaw.providerKey")}
-                    <span className="text-destructive ml-1">*</span>
-                  </Label>
-                  <Input
-                    id="openclaw-key"
-                    value={openclawForm.openclawProviderKey}
-                    onChange={(e) =>
-                      openclawForm.setOpenclawProviderKey(
-                        e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
-                      )
-                    }
-                    placeholder={t("openclaw.providerKeyPlaceholder")}
-                    disabled={
-                      isProviderKeyLocked || isProviderKeyLockStateLoading
-                    }
-                    className={
-                      (additiveExistingProviderKeys.includes(
-                        openclawForm.openclawProviderKey,
-                      ) &&
-                        !isProviderKeyLocked) ||
-                      (openclawForm.openclawProviderKey.trim() !== "" &&
-                        !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                      ) && (
+                        <p className="text-xs text-destructive">
+                          {t("opencode.providerKeyInvalid")}
+                        </p>
+                      )}
+                    {!(
+                      additiveExistingProviderKeys.includes(
+                        opencodeForm.opencodeProviderKey,
+                      ) && !isProviderKeyLocked
+                    ) &&
+                      (opencodeForm.opencodeProviderKey.trim() === "" ||
+                        /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                          opencodeForm.opencodeProviderKey,
+                        )) && (
+                        <p className="text-xs text-muted-foreground">
+                          {isProviderKeyLocked
+                            ? t("opencode.providerKeyLockedHint", {
+                                defaultValue:
+                                  "该供应商已添加到应用配置中，供应商标识不可修改",
+                              })
+                            : t("opencode.providerKeyHint")}
+                        </p>
+                      )}
+                  </div>
+                ) : appId === "openclaw" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="openclaw-key">
+                      {t("openclaw.providerKey")}
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+                    <Input
+                      id="openclaw-key"
+                      value={openclawForm.openclawProviderKey}
+                      onChange={(e) =>
+                        openclawForm.setOpenclawProviderKey(
+                          e.target.value
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]/g, ""),
+                        )
+                      }
+                      placeholder={t("openclaw.providerKeyPlaceholder")}
+                      disabled={
+                        isProviderKeyLocked || isProviderKeyLockStateLoading
+                      }
+                      className={
+                        (additiveExistingProviderKeys.includes(
                           openclawForm.openclawProviderKey,
-                        ))
-                        ? "border-destructive"
-                        : ""
-                    }
-                  />
-                  {additiveExistingProviderKeys.includes(
-                    openclawForm.openclawProviderKey,
-                  ) &&
-                    !isProviderKeyLocked && (
-                      <p className="text-xs text-destructive">
-                        {t("openclaw.providerKeyDuplicate")}
-                      </p>
-                    )}
-                  {openclawForm.openclawProviderKey.trim() !== "" &&
-                    !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                        ) &&
+                          !isProviderKeyLocked) ||
+                        (openclawForm.openclawProviderKey.trim() !== "" &&
+                          !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                            openclawForm.openclawProviderKey,
+                          ))
+                          ? "border-destructive"
+                          : ""
+                      }
+                    />
+                    {additiveExistingProviderKeys.includes(
                       openclawForm.openclawProviderKey,
-                    ) && (
-                      <p className="text-xs text-destructive">
-                        {t("openclaw.providerKeyInvalid")}
-                      </p>
-                    )}
-                  {!(
-                    additiveExistingProviderKeys.includes(
-                      openclawForm.openclawProviderKey,
-                    ) && !isProviderKeyLocked
-                  ) &&
-                    (openclawForm.openclawProviderKey.trim() === "" ||
-                      /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                    ) &&
+                      !isProviderKeyLocked && (
+                        <p className="text-xs text-destructive">
+                          {t("openclaw.providerKeyDuplicate")}
+                        </p>
+                      )}
+                    {openclawForm.openclawProviderKey.trim() !== "" &&
+                      !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
                         openclawForm.openclawProviderKey,
-                      )) && (
-                      <p className="text-xs text-muted-foreground">
-                        {isProviderKeyLocked
-                          ? t("openclaw.providerKeyLockedHint", {
-                              defaultValue:
-                                "该供应商已添加到应用配置中，供应商标识不可修改",
-                            })
-                          : t("openclaw.providerKeyHint")}
-                      </p>
-                    )}
-                </div>
-              ) : appId === "hermes" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="hermes-key">
-                    {t("hermes.form.providerKey", {
-                      defaultValue: "Provider Key",
-                    })}
-                    <span className="text-destructive ml-1">*</span>
-                  </Label>
-                  <Input
-                    id="hermes-key"
-                    value={hermesForm.hermesProviderKey}
-                    onChange={(e) =>
-                      hermesForm.setHermesProviderKey(
-                        e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
-                      )
-                    }
-                    placeholder={t("hermes.form.providerKeyPlaceholder", {
-                      defaultValue: "my-provider",
-                    })}
-                    disabled={
-                      isProviderKeyLocked || isProviderKeyLockStateLoading
-                    }
-                    className={
-                      (additiveExistingProviderKeys.includes(
-                        hermesForm.hermesProviderKey,
-                      ) &&
-                        !isProviderKeyLocked) ||
-                      (hermesForm.hermesProviderKey.trim() !== "" &&
-                        !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                      ) && (
+                        <p className="text-xs text-destructive">
+                          {t("openclaw.providerKeyInvalid")}
+                        </p>
+                      )}
+                    {!(
+                      additiveExistingProviderKeys.includes(
+                        openclawForm.openclawProviderKey,
+                      ) && !isProviderKeyLocked
+                    ) &&
+                      (openclawForm.openclawProviderKey.trim() === "" ||
+                        /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                          openclawForm.openclawProviderKey,
+                        )) && (
+                        <p className="text-xs text-muted-foreground">
+                          {isProviderKeyLocked
+                            ? t("openclaw.providerKeyLockedHint", {
+                                defaultValue:
+                                  "该供应商已添加到应用配置中，供应商标识不可修改",
+                              })
+                            : t("openclaw.providerKeyHint")}
+                        </p>
+                      )}
+                  </div>
+                ) : appId === "hermes" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="hermes-key">
+                      {t("hermes.form.providerKey", {
+                        defaultValue: "Provider Key",
+                      })}
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+                    <Input
+                      id="hermes-key"
+                      value={hermesForm.hermesProviderKey}
+                      onChange={(e) =>
+                        hermesForm.setHermesProviderKey(
+                          e.target.value
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]/g, ""),
+                        )
+                      }
+                      placeholder={t("hermes.form.providerKeyPlaceholder", {
+                        defaultValue: "my-provider",
+                      })}
+                      disabled={
+                        isProviderKeyLocked || isProviderKeyLockStateLoading
+                      }
+                      className={
+                        (additiveExistingProviderKeys.includes(
                           hermesForm.hermesProviderKey,
-                        ))
-                        ? "border-destructive"
-                        : ""
-                    }
-                  />
-                  {additiveExistingProviderKeys.includes(
-                    hermesForm.hermesProviderKey,
-                  ) &&
-                    !isProviderKeyLocked && (
-                      <p className="text-xs text-destructive">
-                        {t("hermes.form.providerKeyDuplicate")}
-                      </p>
-                    )}
-                  {hermesForm.hermesProviderKey.trim() !== "" &&
-                    !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                        ) &&
+                          !isProviderKeyLocked) ||
+                        (hermesForm.hermesProviderKey.trim() !== "" &&
+                          !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                            hermesForm.hermesProviderKey,
+                          ))
+                          ? "border-destructive"
+                          : ""
+                      }
+                    />
+                    {additiveExistingProviderKeys.includes(
                       hermesForm.hermesProviderKey,
-                    ) && (
-                      <p className="text-xs text-destructive">
-                        {t("hermes.form.providerKeyInvalid")}
-                      </p>
-                    )}
-                  {!(
-                    additiveExistingProviderKeys.includes(
-                      hermesForm.hermesProviderKey,
-                    ) && !isProviderKeyLocked
-                  ) &&
-                    (hermesForm.hermesProviderKey.trim() === "" ||
-                      /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                    ) &&
+                      !isProviderKeyLocked && (
+                        <p className="text-xs text-destructive">
+                          {t("hermes.form.providerKeyDuplicate")}
+                        </p>
+                      )}
+                    {hermesForm.hermesProviderKey.trim() !== "" &&
+                      !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(
                         hermesForm.hermesProviderKey,
-                      )) && (
-                      <p className="text-xs text-muted-foreground">
-                        {isProviderKeyLocked
-                          ? t("hermes.form.providerKeyLockedHint", {
-                              defaultValue:
-                                "This provider is in Hermes config; key is locked.",
-                            })
-                          : t("hermes.form.providerKeyHint", {
-                              defaultValue:
-                                "Lowercase letters, numbers, and hyphens only. Used as the provider name in config.yaml.",
-                            })}
-                      </p>
-                    )}
-                </div>
-              ) : undefined
-            }
-          />
+                      ) && (
+                        <p className="text-xs text-destructive">
+                          {t("hermes.form.providerKeyInvalid")}
+                        </p>
+                      )}
+                    {!(
+                      additiveExistingProviderKeys.includes(
+                        hermesForm.hermesProviderKey,
+                      ) && !isProviderKeyLocked
+                    ) &&
+                      (hermesForm.hermesProviderKey.trim() === "" ||
+                        /^[a-z0-9]+(-[a-z0-9]+)*$/.test(
+                          hermesForm.hermesProviderKey,
+                        )) && (
+                        <p className="text-xs text-muted-foreground">
+                          {isProviderKeyLocked
+                            ? t("hermes.form.providerKeyLockedHint", {
+                                defaultValue:
+                                  "This provider is in Hermes config; key is locked.",
+                              })
+                            : t("hermes.form.providerKeyHint", {
+                                defaultValue:
+                                  "Lowercase letters, numbers, and hyphens only. Used as the provider name in config.yaml.",
+                              })}
+                        </p>
+                      )}
+                  </div>
+                ) : undefined
+              }
+            />
+          )}
 
           {appId === "claude" && (
             <ClaudeFormFields
@@ -2273,6 +2291,7 @@ function ProviderFormFull({
               onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
               localProxyBodyOverride={localProxyBodyOverride}
               onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
+              connectionReadOnly={connectionReadOnly}
             />
           )}
 
@@ -2328,6 +2347,7 @@ function ProviderFormFull({
               onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
               localProxyBodyOverride={localProxyBodyOverride}
               onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
+              connectionReadOnly={connectionReadOnly}
             />
           )}
 
@@ -2357,6 +2377,7 @@ function ProviderFormFull({
               model={geminiModel}
               onModelChange={handleGeminiModelChange}
               speedTestEndpoints={speedTestEndpoints}
+              connectionReadOnly={connectionReadOnly}
             />
           )}
 
@@ -2381,6 +2402,7 @@ function ProviderFormFull({
               onExtraOptionsChange={
                 opencodeForm.handleOpencodeExtraOptionsChange
               }
+              connectionReadOnly={connectionReadOnly}
             />
           )}
 

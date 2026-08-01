@@ -157,6 +157,7 @@ function ModelOptionKeyInput({
 }
 
 interface OpenCodeFormFieldsProps {
+  connectionReadOnly?: boolean;
   // NPM Package
   npm: string;
   onNpmChange: (value: string) => void;
@@ -188,6 +189,7 @@ interface OpenCodeFormFieldsProps {
 }
 
 export function OpenCodeFormFields({
+  connectionReadOnly = false,
   npm,
   onNpmChange,
   apiKey,
@@ -585,6 +587,7 @@ export function OpenCodeFormFields({
         websiteUrl={websiteUrl}
         isPartner={isPartner}
         partnerPromotionKey={partnerPromotionKey}
+        disabled={connectionReadOnly}
       />
 
       {/* Base URL */}
@@ -597,6 +600,7 @@ export function OpenCodeFormFields({
           value={baseUrl}
           onChange={(e) => onBaseUrlChange(e.target.value)}
           placeholder="https://api.example.com/v1"
+          disabled={connectionReadOnly}
         />
         <p className="text-xs text-muted-foreground">
           {t("opencode.baseUrlHint", {

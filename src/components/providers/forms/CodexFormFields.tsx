@@ -54,6 +54,7 @@ interface EndpointCandidate {
 interface CodexFormFieldsProps {
   appId?: AppId;
   providerId?: string;
+  connectionReadOnly?: boolean;
   // xAI OAuth 托管预设（Grok 订阅）：隐藏 API Key / 端点输入，挂账号选择区块
   isXaiOauthPreset?: boolean;
   isXaiOauthAuthenticated?: boolean;
@@ -166,6 +167,7 @@ function catalogRowsMatchModels(
 export function CodexFormFields({
   appId = "codex",
   providerId,
+  connectionReadOnly = false,
   isXaiOauthPreset,
   isXaiOauthAuthenticated,
   selectedXaiAccountId,
@@ -521,6 +523,7 @@ export function CodexFormFields({
           websiteUrl={websiteUrl}
           isPartner={isPartner}
           partnerPromotionKey={partnerPromotionKey}
+          disabled={connectionReadOnly}
           placeholder={{
             official: t("providerForm.codexOfficialNoApiKey", {
               defaultValue: "官方供应商无需 API Key",
@@ -545,6 +548,7 @@ export function CodexFormFields({
           isFullUrl={isFullUrl}
           onFullUrlChange={onFullUrlChange}
           onManageClick={() => onEndpointModalToggle(true)}
+          disabled={connectionReadOnly}
         />
       )}
 

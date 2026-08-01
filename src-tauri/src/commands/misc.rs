@@ -111,6 +111,12 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
+#[derive(serde::Serialize)]
+pub struct ToolLatestVersion {
+    name: String,
+    latest_version: Option<String>,
+}
+
 const VALID_TOOLS: [&str; 7] = [
     "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
 ];
@@ -174,6 +180,34 @@ pub async fn get_tool_versions(
         results.push(get_single_tool_version_impl(tool, tool_wsl_shell, tool_wsl_shell_flag).await);
     }
 
+    Ok(results)
+}
+
+/// 只查询远端最新版本，不执行本机命令或安装路径扫描。
+/// 页面首次进入时由 `get_tool_versions` 建立本地版本快照；后续右上角的更新检测
+/// 复用该快照，仅走这里的 registry / release API 请求。
+#[tauri::command]
+pub async fn get_latest_tool_versions(
+    tools: Vec<String>,
+    current_versions: Option<HashMap<String, String>>,
+) -> Result<Vec<ToolLatestVersion>, String> {
+    let requested = normalize_requested_tools(&tools);
+    if requested.is_empty() {
+        return Err("No supported tools selected".to_string());
+    }
+
+    let client = crate::proxy::http_client::get();
+    let mut results = Vec::with_capacity(requested.len());
+    for tool in requested {
+        let current = current_versions
+            .as_ref()
+            .and_then(|versions| versions.get(tool))
+            .map(String::as_str);
+        results.push(ToolLatestVersion {
+            name: tool.to_string(),
+            latest_version: fetch_latest_tool_version(&client, tool, current).await,
+        });
+    }
     Ok(results)
 }
 
@@ -743,6 +777,44 @@ fn windows_cmd_double_quote_arg(value: &str) -> String {
     win_double_quote(value)
 }
 
+async fn fetch_latest_tool_version(
+    client: &reqwest::Client,
+    tool: &str,
+    local_version: Option<&str>,
+) -> Option<String> {
+    tokio::time::timeout(std::time::Duration::from_secs(6), async {
+        match tool {
+            "claude" => {
+                fetch_npm_latest_for_tool(client, "@anthropic-ai/claude-code", tool, local_version)
+                    .await
+            }
+            "codex" => {
+                fetch_npm_latest_for_tool(client, "@openai/codex", tool, local_version).await
+            }
+            "gemini" => {
+                fetch_npm_latest_for_tool(client, "@google/gemini-cli", tool, local_version).await
+            }
+            "grok" => {
+                fetch_npm_latest_for_tool(client, "@xai-official/grok", tool, local_version).await
+            }
+            "opencode" => {
+                if let Some(version) =
+                    fetch_npm_latest_for_tool(client, "opencode-ai", tool, local_version).await
+                {
+                    Some(version)
+                } else {
+                    fetch_github_latest_version(client, "anomalyco/opencode").await
+                }
+            }
+            "openclaw" => fetch_npm_latest_for_tool(client, "openclaw", tool, local_version).await,
+            "hermes" => fetch_pypi_latest_version(client, "hermes-agent").await,
+            _ => None,
+        }
+    })
+    .await
+    .unwrap_or(None)
+}
+
 /// 获取单个工具的版本信息（内部实现）
 async fn get_single_tool_version_impl(
     tool: &str,
@@ -786,29 +858,9 @@ async fn get_single_tool_version_impl(
         ShellProbe::NotFound(e) => (None, Some(e), false),
     };
 
-    // 2. 获取远程最新版本（npm 工具在本地领先 latest 时会按预发布通道补查，见
-    //    fetch_npm_latest_for_tool / npm_prerelease_tags）
-    let local = local_version.as_deref();
-    let latest_version = match tool {
-        "claude" => {
-            fetch_npm_latest_for_tool(&client, "@anthropic-ai/claude-code", tool, local).await
-        }
-        "codex" => fetch_npm_latest_for_tool(&client, "@openai/codex", tool, local).await,
-        "gemini" => fetch_npm_latest_for_tool(&client, "@google/gemini-cli", tool, local).await,
-        "grok" => fetch_npm_latest_for_tool(&client, "@xai-official/grok", tool, local).await,
-        "opencode" => {
-            if let Some(version) =
-                fetch_npm_latest_for_tool(&client, "opencode-ai", tool, local).await
-            {
-                Some(version)
-            } else {
-                fetch_github_latest_version(&client, "anomalyco/opencode").await
-            }
-        }
-        "openclaw" => fetch_npm_latest_for_tool(&client, "openclaw", tool, local).await,
-        "hermes" => fetch_pypi_latest_version(&client, "hermes-agent").await,
-        _ => None,
-    };
+    // 2. 获取远程最新版本。独立 helper 同时供“仅检测更新”命令复用；这里传入
+    //    首次探测得到的本地版本，以保留 Claude 预发布通道识别。
+    let latest_version = fetch_latest_tool_version(&client, tool, local_version.as_deref()).await;
 
     ToolVersion {
         name: tool.to_string(),
@@ -932,10 +984,14 @@ async fn fetch_npm_dist_tags(
     client: &reqwest::Client,
     package: &str,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let url = format!("https://registry.npmjs.org/{package}");
+    // 使用专用 dist-tags 端点，避免下载并解析整个包的版本元数据。OpenCode 等
+    // 高频发布的包完整元数据很大，曾让环境检测长时间停在“检测中”。
+    let encoded_package: String =
+        url::form_urlencoded::byte_serialize(package.as_bytes()).collect();
+    let url = format!("https://registry.npmjs.org/-/package/{encoded_package}/dist-tags");
     let resp = client.get(&url).send().await.ok()?;
     let json = resp.json::<serde_json::Value>().await.ok()?;
-    json.get("dist-tags")?.as_object().cloned()
+    json.as_object().cloned()
 }
 
 /// 查询某 npm 工具要展示的"最新版本":取 `latest`,并在本地版本领先时按工具的
@@ -955,7 +1011,7 @@ async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Op
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
     match client
         .get(&url)
-        .header("User-Agent", "cc-switch")
+        .header("User-Agent", "vv-code")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await

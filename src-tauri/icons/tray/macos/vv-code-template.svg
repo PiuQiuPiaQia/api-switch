@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <path
+    d="M4 18 18 53 30 18 M42 18 54 53 68 18"
+    fill="none"
+    stroke="#000"
+    stroke-linecap="square"
+    stroke-linejoin="miter"
+    stroke-width="7"
+  />
+</svg>

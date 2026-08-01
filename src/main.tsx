@@ -1,8 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import ProductApp from "./product/ProductApp";
 import { DatabaseUpgrade } from "./components/DatabaseUpgrade";
-import { UpdateProvider } from "./contexts/UpdateContext";
 import "./index.css";
 // 导入国际化配置
 import i18n from "./i18n";
@@ -19,10 +18,6 @@ import {
   installGlobalErrorHandlers,
   reportFrontendError,
 } from "./lib/frontendLogger";
-import {
-  MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
-  syncModelsDevPricingOnStartup,
-} from "./lib/modelsDevAutoSync";
 
 installGlobalErrorHandlers();
 
@@ -53,7 +48,7 @@ interface ConfigLoadErrorPayload {
 async function handleConfigLoadError(
   payload: ConfigLoadErrorPayload | null,
 ): Promise<void> {
-  const path = payload?.path ?? "~/.cc-switch/config.json";
+  const path = payload?.path ?? "~/.vv-code/config.json";
   const detail = payload?.error ?? "Unknown error";
 
   await message(
@@ -95,7 +90,7 @@ async function bootstrap() {
       ReactDOM.createRoot(document.getElementById("root")!).render(
         <React.StrictMode>
           <FrontendErrorBoundary>
-            <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
+            <ThemeProvider defaultTheme="light" storageKey="vv-code-theme">
               <DatabaseUpgrade payload={initError} />
               <Toaster />
             </ThemeProvider>
@@ -118,35 +113,14 @@ async function bootstrap() {
     <React.StrictMode>
       <FrontendErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
-            <UpdateProvider>
-              <App />
-              <Toaster />
-            </UpdateProvider>
+          <ThemeProvider defaultTheme="light" storageKey="vv-code-theme">
+            <ProductApp />
+            <Toaster />
           </ThemeProvider>
         </QueryClientProvider>
       </FrontendErrorBoundary>
     </React.StrictMode>,
   );
-
-  void syncModelsDevPricingOnStartup()
-    .then((result) => {
-      if (!result.skipped) {
-        return Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["usage"] }),
-          queryClient.invalidateQueries({
-            queryKey: MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
-          }),
-        ]);
-      }
-    })
-    .catch((error) => {
-      // 离线或 models.dev 暂时不可用不应阻塞应用启动。
-      reportFrontendError("models_dev_startup_sync", error);
-      void queryClient.invalidateQueries({
-        queryKey: MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
-      });
-    });
 }
 
 void bootstrap();

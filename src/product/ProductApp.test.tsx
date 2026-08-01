@@ -1,0 +1,126 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PRODUCT } from "./config";
+import type { ToolVersionInfo } from "./types";
+import ProductApp from "./ProductApp";
+
+const mocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  getBootstrap: vi.fn(),
+  getToolVersions: vi.fn(),
+  getLatestToolVersions: vi.fn(),
+}));
+
+vi.mock("./api", () => ({
+  newApiApi: {
+    getSession: mocks.getSession,
+    getBootstrap: mocks.getBootstrap,
+    beginOAuth: vi.fn(),
+    logout: vi.fn(),
+    ensureGroupTokens: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/api/settings", () => ({
+  settingsApi: {
+    getToolVersions: mocks.getToolVersions,
+    getLatestToolVersions: mocks.getLatestToolVersions,
+  },
+}));
+
+vi.mock("./components/BrandMark", () => ({
+  BrandMark: () => <span>VV Code</span>,
+}));
+
+vi.mock("./components/LoginScreen", () => ({
+  LoginScreen: ({ onPreview }: { onPreview: () => void }) => (
+    <button type="button" onClick={onPreview}>
+      进入预览
+    </button>
+  ),
+}));
+
+vi.mock("./components/InitializationPanel", () => ({
+  InitializationPanel: () => <div>初始化页</div>,
+}));
+
+vi.mock("./components/ScenarioWorkspace", () => ({
+  ScenarioWorkspace: ({
+    scenario,
+    onCheckForUpdates,
+  }: {
+    scenario: { name: string };
+    onCheckForUpdates: () => Promise<unknown>;
+  }) => (
+    <div>
+      {scenario.name} 工作区
+      <button type="button" onClick={() => void onCheckForUpdates()}>
+        仅检测更新
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("./components/AccountPage", () => ({
+  AccountPage: () => <div>用户页</div>,
+}));
+
+function toolInfo(name: string): ToolVersionInfo {
+  return {
+    name,
+    version: "1.0.0",
+    latest_version: "1.0.0",
+    error: null,
+    installed_but_broken: false,
+    env_type: "macos",
+    wsl_distro: null,
+  };
+}
+
+describe("ProductApp tool environment checks", () => {
+  beforeEach(() => {
+    mocks.getSession.mockReset();
+    mocks.getSession.mockResolvedValue(null);
+    mocks.getBootstrap.mockReset();
+    mocks.getToolVersions.mockReset();
+    mocks.getLatestToolVersions.mockReset();
+    mocks.getLatestToolVersions.mockResolvedValue([
+      { name: "claude", latest_version: "1.1.0" },
+    ]);
+    mocks.getToolVersions.mockImplementation(async ([tool]: string[]) => [
+      toolInfo(tool),
+    ]);
+  });
+
+  it("checks every tool once on first entry and reuses the results while navigating", async () => {
+    render(<ProductApp />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "进入预览" }));
+
+    await waitFor(() =>
+      expect(mocks.getToolVersions).toHaveBeenCalledTimes(
+        PRODUCT.scenarios.length,
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
+    expect(await screen.findByText("Codex CLI 工作区")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+
+    expect(mocks.getToolVersions).toHaveBeenCalledTimes(
+      PRODUCT.scenarios.length,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "仅检测更新" }));
+    await waitFor(() =>
+      expect(mocks.getLatestToolVersions).toHaveBeenCalledWith(["claude"], {
+        claude: "1.0.0",
+      }),
+    );
+    expect(mocks.getToolVersions).toHaveBeenCalledTimes(
+      PRODUCT.scenarios.length,
+    );
+  });
+});

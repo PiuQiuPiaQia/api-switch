@@ -19,6 +19,7 @@ interface EndpointCandidate {
 
 interface GeminiFormFieldsProps {
   providerId?: string;
+  connectionReadOnly?: boolean;
   // API Key
   shouldShowApiKey: boolean;
   apiKey: string;
@@ -50,6 +51,7 @@ interface GeminiFormFieldsProps {
 
 export function GeminiFormFields({
   providerId,
+  connectionReadOnly = false,
   shouldShowApiKey,
   apiKey,
   onApiKeyChange,
@@ -141,6 +143,7 @@ export function GeminiFormFields({
           websiteUrl={websiteUrl}
           isPartner={isPartner}
           partnerPromotionKey={partnerPromotionKey}
+          disabled={connectionReadOnly}
         />
       )}
 
@@ -155,6 +158,7 @@ export function GeminiFormFields({
             defaultValue: "https://your-api-endpoint.com/",
           })}
           onManageClick={() => onEndpointModalToggle(true)}
+          disabled={connectionReadOnly}
         />
       )}
 
