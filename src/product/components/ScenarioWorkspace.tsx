@@ -7,13 +7,9 @@ import {
   ChevronsUpDown,
   CircleDollarSign,
   Download,
-  KeyRound,
-  Layers3,
   Loader2,
   RefreshCw,
   ServerCog,
-  ShieldCheck,
-  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -66,12 +62,6 @@ interface KeyPreparationState {
 
 type ToolLifecycleAction = "install" | "update";
 
-function maskKey(key: string): string {
-  if (!key) return "尚未初始化";
-  if (key.length < 14) return `${key.slice(0, 4)}••••`;
-  return `${key.slice(0, 8)}••••${key.slice(-4)}`;
-}
-
 function ratioLabel(value: string): string {
   if (!value) return "1×";
   if (value === "自动") return value;
@@ -114,14 +104,14 @@ function EnvironmentGate({
           : `先初始化 ${scenario.name} 环境`;
 
   const description = checking
-    ? "确认客户端是否可用，并同步当前版本与最新版本信息。"
+    ? "正在读取本机客户端状态。"
     : initializing
-      ? "正在安装官方客户端并校验运行环境，这通常需要一点时间。"
+      ? "正在安装并校验客户端，请稍候。"
       : error && !toolInfo
-        ? "环境检测没有完成。重新检测成功前，分组和模型配置将保持锁定。"
+        ? "无法确认环境状态，重试后再继续。"
         : needsRepair
-          ? "已经找到客户端，但它目前无法正常启动。重新初始化后才能继续配置。"
-          : `本机尚未安装 ${scenario.name}。完成初始化后，分组和模型配置才会开放。`;
+          ? "客户端无法正常启动，重新初始化后再继续。"
+          : `本机尚未安装 ${scenario.name}，初始化后即可配置分组和模型。`;
 
   return (
     <section
@@ -138,29 +128,8 @@ function EnvironmentGate({
             <ServerCog size={34} />
           )}
         </span>
-        <span className="vv-environment-gate__label">运行环境</span>
         <h2>{title}</h2>
         <p>{description}</p>
-
-        {!checking && !initializing && canInitialize && (
-          <div className="vv-environment-gate__steps" aria-label="初始化步骤">
-            <span>
-              <i>1</i>
-              <strong>安装客户端</strong>
-              <small>使用官方安装方式</small>
-            </span>
-            <span>
-              <i>2</i>
-              <strong>校验版本</strong>
-              <small>确认命令可以运行</small>
-            </span>
-            <span>
-              <i>3</i>
-              <strong>开放配置</strong>
-              <small>启用分组与模型设置</small>
-            </span>
-          </div>
-        )}
 
         {error && !checking && !initializing && (
           <div className="vv-environment-gate__error">
@@ -538,168 +507,113 @@ export function ScenarioWorkspace({
 
       {environmentReady ? (
         <section className="vv-catalog">
-          <div className="vv-section-title">
-            <div>
-              <h2>选择分组</h2>
-              <p>
-                共 {bootstrap.groups.length}{" "}
-                个可用分组，模型将在供应商配置中按需指定。
-              </p>
-            </div>
+          <div className="vv-group-toolbar">
+            <span className="vv-field-label">分组</span>
+            {selectedGroup ? (
+              <Popover
+                modal
+                open={groupSelectorOpen}
+                onOpenChange={setGroupSelectorOpen}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    role="combobox"
+                    aria-expanded={groupSelectorOpen}
+                    className="vv-group-select"
+                  >
+                    <span className="vv-group-select__current">
+                      <strong>{selectedGroup.name}</strong>
+                    </span>
+                    <span className="vv-ratio-badge">
+                      <CircleDollarSign size={13} />
+                      {ratioLabel(selectedGroup.ratio)}
+                    </span>
+                    <ChevronsUpDown
+                      className="vv-group-select__chevrons"
+                      size={16}
+                    />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={6}
+                  collisionPadding={10}
+                  className="vv-group-select__popover z-[200] w-[var(--radix-popover-trigger-width)] p-0"
+                >
+                  <Command>
+                    <CommandInput placeholder="搜索分组…" />
+                    <CommandList>
+                      <CommandEmpty>没有找到匹配的分组</CommandEmpty>
+                      <CommandGroup
+                        heading={`可用分组 · ${bootstrap.groups.length}`}
+                      >
+                        {bootstrap.groups.map((group) => (
+                          <CommandItem
+                            key={group.id}
+                            value={group.id}
+                            keywords={[group.name, group.description]}
+                            className="vv-group-select__option"
+                            onSelect={() => {
+                              selectionTouchedRef.current = true;
+                              setSelectedGroupId(group.id);
+                              setGroupSelectorOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={`vv-group-select__check ${selectedGroupId === group.id ? "is-visible" : ""}`}
+                              size={15}
+                            />
+                            <span className="vv-group-select__option-copy">
+                              <strong>{group.name}</strong>
+                              <small>
+                                {group.description || "由中转站分配的可用线路"}
+                              </small>
+                            </span>
+                            <span className="vv-group-select__option-ratio">
+                              {ratioLabel(group.ratio)}
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <div className="vv-empty-result">暂无可用分组</div>
+            )}
           </div>
 
-          {selectedGroup ? (
-            <Popover
-              modal
-              open={groupSelectorOpen}
-              onOpenChange={setGroupSelectorOpen}
-            >
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  role="combobox"
-                  aria-expanded={groupSelectorOpen}
-                  className="vv-group-select"
-                >
-                  <span className="vv-group-select__icon">
-                    <Layers3 size={17} />
-                  </span>
-                  <span className="vv-group-select__current">
-                    <strong>{selectedGroup.name}</strong>
-                    <small>
-                      {selectedGroup.description || "由中转站分配的可用线路"}
-                    </small>
-                  </span>
-                  <span className="vv-ratio-badge">
-                    <CircleDollarSign size={13} />
-                    {ratioLabel(selectedGroup.ratio)}
-                  </span>
-                  <ChevronsUpDown
-                    className="vv-group-select__chevrons"
-                    size={16}
-                  />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                side="bottom"
-                align="start"
-                sideOffset={6}
-                collisionPadding={10}
-                className="vv-group-select__popover z-[200] w-[var(--radix-popover-trigger-width)] p-0"
-              >
-                <Command>
-                  <CommandInput placeholder="搜索分组…" />
-                  <CommandList>
-                    <CommandEmpty>没有找到匹配的分组</CommandEmpty>
-                    <CommandGroup
-                      heading={`可用分组 · ${bootstrap.groups.length}`}
-                    >
-                      {bootstrap.groups.map((group) => (
-                        <CommandItem
-                          key={group.id}
-                          value={group.id}
-                          keywords={[group.name, group.description]}
-                          className="vv-group-select__option"
-                          onSelect={() => {
-                            selectionTouchedRef.current = true;
-                            setSelectedGroupId(group.id);
-                            setGroupSelectorOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={`vv-group-select__check ${selectedGroupId === group.id ? "is-visible" : ""}`}
-                            size={15}
-                          />
-                          <span className="vv-group-select__option-copy">
-                            <strong>{group.name}</strong>
-                            <small>
-                              {group.description || "由中转站分配的可用线路"}
-                            </small>
-                          </span>
-                          <span className="vv-group-select__option-ratio">
-                            {ratioLabel(group.ratio)}
-                          </span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          ) : (
-            <div className="vv-empty-result">暂无可用分组</div>
-          )}
-
-          {selectedGroup && (
+          {selectedGroup && (keyProvisioning || keyProvisionError) && (
             <div
-              className={`vv-connection-brief ${keyProvisionError ? "is-error" : keyProvisioning ? "is-loading" : "is-ready"}`}
+              className={`vv-credential-status ${keyProvisionError ? "is-error" : "is-loading"}`}
             >
-              <span className="vv-connection-brief__status">
-                {keyProvisioning ? (
-                  <Loader2 className="vv-spin" size={16} />
-                ) : keyProvisionError ? (
-                  <AlertTriangle size={16} />
-                ) : (
-                  <ShieldCheck size={16} />
-                )}
+              {keyProvisioning ? (
+                <Loader2 className="vv-spin" size={14} />
+              ) : (
+                <AlertTriangle size={14} />
+              )}
+              <span>
+                {keyProvisioning
+                  ? "正在准备访问凭据…"
+                  : (keyProvisionError ?? "访问凭据准备失败")}
               </span>
-              <div className="vv-connection-brief__item">
-                <span>当前分组</span>
-                <strong>{selectedGroup.name}</strong>
-              </div>
-              <div className="vv-connection-brief__item is-endpoint">
-                <span>服务地址</span>
-                <strong>
-                  <ServerCog size={12} />
-                  {selectedConnection?.baseUrl || "等待中转站配置"}
-                </strong>
-              </div>
-              <div className="vv-connection-brief__item is-key">
-                <span>客户端密钥</span>
-                <strong>
-                  <KeyRound size={12} />
-                  {keyProvisioning
-                    ? "正在自动创建…"
-                    : keyProvisionError
-                      ? "准备失败"
-                      : maskKey(selectedConnection?.apiKey || "")}
-                </strong>
-              </div>
               {keyProvisionError && (
                 <button
                   type="button"
-                  className="vv-connection-brief__retry"
+                  className="vv-credential-status__retry"
                   onClick={() => setKeyRetryNonce((current) => current + 1)}
                 >
                   重试
                 </button>
-              )}
-              {keyProvisionError && (
-                <p className="vv-connection-brief__error">
-                  {keyProvisionError}
-                </p>
               )}
             </div>
           )}
 
           {selectedGroup && managedProvider && (
             <section className="vv-provider-editor">
-              <div className="vv-provider-editor__header">
-                <span className="vv-provider-editor__icon">
-                  <SlidersHorizontal size={18} />
-                </span>
-                <div>
-                  <h3>供应商配置</h3>
-                  <p>
-                    {keyProvisioning
-                      ? "正在自动准备客户端密钥，完成后即可获取模型。"
-                      : keyProvisionError
-                        ? "客户端密钥尚未就绪，请重试后继续。"
-                        : "仅保留需要调整的核心参数；点击应用后才会写入本机。"}
-                  </p>
-                </div>
-                <span className="vv-provider-editor__badge">本机配置</span>
-              </div>
               <div className="vv-provider-editor__body">
                 {providerLoading ? (
                   <div className="vv-provider-editor__loading">

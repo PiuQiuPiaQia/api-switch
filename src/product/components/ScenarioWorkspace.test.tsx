@@ -127,7 +127,6 @@ describe("ScenarioWorkspace", () => {
       expect(apiMocks.ensureTokens).toHaveBeenCalledWith("daily"),
     );
     expect(apiMocks.ensureTokens).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("sk-ready••••done")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "创建客户端密钥" }),
     ).not.toBeInTheDocument();
@@ -143,7 +142,9 @@ describe("ScenarioWorkspace", () => {
       expect(apiMocks.ensureTokens).toHaveBeenCalledWith("daily"),
     );
     expect(apiMocks.ensureTokens).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("sk-ready••••done")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "应用配置" })).toBeEnabled(),
+    );
   });
 
   it("reuses the app-level environment state without checking again on mount", async () => {

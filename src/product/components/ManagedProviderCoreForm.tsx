@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState, type FormEvent } from "react";
-import { Download, Loader2, Plus, Route, Trash2 } from "lucide-react";
+import { useCallback, useState, type FormEvent } from "react";
+import { Download, Loader2, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -76,25 +76,6 @@ function openCodeRowsFromProvider(provider: Provider): OpenCodeModelRow[] {
   });
 }
 
-function protocolLabel(
-  scenario: ProductScenario,
-  group: NewApiGroup,
-  provider: Provider,
-): string {
-  const connection = resolveGroupConnection(scenario, group);
-  if (scenario.id === "claude") return "Anthropic Messages";
-  if (scenario.id === "codex") {
-    return connection.apiFormat === "openai_chat"
-      ? "OpenAI Chat Completions"
-      : "OpenAI Responses";
-  }
-  if (scenario.id === "gemini") return "Gemini API";
-  const npm = asRecord(provider.settingsConfig).npm;
-  return typeof npm === "string" && npm.includes("anthropic")
-    ? "Anthropic SDK"
-    : "OpenAI Compatible";
-}
-
 export function ManagedProviderCoreForm({
   formId,
   scenario,
@@ -120,11 +101,6 @@ export function ManagedProviderCoreForm({
   );
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
-
-  const protocol = useMemo(
-    () => protocolLabel(scenario, group, provider),
-    [group, provider, scenario],
-  );
 
   const handleFetchModels = useCallback(() => {
     if (!connection.baseUrl || !connection.apiKey) {
@@ -185,21 +161,9 @@ export function ManagedProviderCoreForm({
 
   return (
     <form id={formId} className="vv-core-provider-form" onSubmit={handleSubmit}>
-      <div className="vv-core-protocol">
-        <span>模型协议</span>
-        <strong>{protocol}</strong>
-        <small>默认</small>
-      </div>
-
       <div className="vv-core-routes">
         <div className="vv-core-routes__heading">
-          <div>
-            <Route size={16} />
-            <div>
-              <strong>模型配置</strong>
-              <p>留空表示不指定模型，保持对应工具的默认行为。</p>
-            </div>
-          </div>
+          <strong>模型配置</strong>
           <button
             type="button"
             onClick={handleFetchModels}
@@ -320,12 +284,6 @@ export function ManagedProviderCoreForm({
           </div>
         )}
       </div>
-
-      {!hasApiKey && (
-        <div className="vv-core-provider-notice">
-          客户端密钥正在自动准备；完成后即可获取模型并应用到本机。
-        </div>
-      )}
     </form>
   );
 }

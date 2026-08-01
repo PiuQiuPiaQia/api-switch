@@ -58,15 +58,17 @@ describe("ManagedProviderCoreForm", () => {
       </>,
     );
 
-    expect(screen.getByText("Anthropic Messages")).toBeInTheDocument();
-    expect(screen.getByText("默认")).toBeInTheDocument();
+    expect(screen.queryByText("Anthropic Messages")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "获取模型" })).toBeDisabled();
     const inputs = screen.getAllByPlaceholderText("留空则不覆盖");
     expect(inputs).toHaveLength(3);
     for (const input of inputs) expect(input).toHaveValue("");
     expect(screen.queryByText("认证字段")).not.toBeInTheDocument();
     expect(screen.queryByText("配置 JSON")).not.toBeInTheDocument();
     expect(screen.queryByText("API Key")).not.toBeInTheDocument();
-    expect(screen.getByText(/客户端密钥正在自动准备/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/客户端密钥正在自动准备/),
+    ).not.toBeInTheDocument();
 
     fireEvent.change(inputs[0], { target: { value: "model-sonnet" } });
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
@@ -137,7 +139,7 @@ describe("ManagedProviderCoreForm", () => {
       </>,
     );
 
-    expect(screen.getByText("OpenAI Responses")).toBeInTheDocument();
+    expect(screen.queryByText("OpenAI Responses")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("留空则不覆盖")).toHaveValue("");
     fireEvent.click(screen.getByRole("button", { name: "应用 Codex" }));
 
