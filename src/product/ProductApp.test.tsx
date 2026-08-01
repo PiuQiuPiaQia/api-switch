@@ -99,6 +99,13 @@ describe("ProductApp tool environment checks", () => {
 
     expect(screen.getByText("preview")).toBeInTheDocument();
     expect(screen.queryByText("体验用户")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "OpenCode" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "OpenClaw（龙虾）" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hermes" })).toBeInTheDocument();
 
     await waitFor(() =>
       expect(mocks.getToolVersions).toHaveBeenCalledTimes(
@@ -110,6 +117,12 @@ describe("ProductApp tool environment checks", () => {
     expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
     expect(await screen.findByText("Codex CLI 工作区")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "OpenClaw（龙虾）" }));
+    expect(
+      await screen.findByText("OpenClaw（龙虾） 工作区"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hermes" }));
+    expect(await screen.findByText("Hermes 工作区")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
 
     expect(mocks.getToolVersions).toHaveBeenCalledTimes(
@@ -125,5 +138,8 @@ describe("ProductApp tool environment checks", () => {
     expect(mocks.getToolVersions).toHaveBeenCalledTimes(
       PRODUCT.scenarios.length,
     );
+    expect(mocks.getToolVersions).not.toHaveBeenCalledWith(["opencode"]);
+    expect(mocks.getToolVersions).toHaveBeenCalledWith(["openclaw"]);
+    expect(mocks.getToolVersions).toHaveBeenCalledWith(["hermes"]);
   });
 });

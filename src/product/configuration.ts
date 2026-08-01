@@ -1,23 +1,16 @@
 import type { Provider } from "@/types";
+import { openclawApi } from "@/lib/api/openclaw";
 import { providersApi } from "@/lib/api/providers";
 import {
   setCodexBaseUrl,
   setCodexModelName,
+  setCodexWireApi,
 } from "@/utils/providerConfigUtils";
 import { PRODUCT } from "./config";
 import type { NewApiConnection, NewApiGroup, ProductScenario } from "./types";
+import { resolveGroupConnection } from "./scenarioConnection";
 
-export function resolveGroupConnection(
-  scenario: ProductScenario,
-  group: NewApiGroup,
-): NewApiConnection {
-  return (
-    group.connections?.[scenario.id] ?? {
-      baseUrl: group.baseUrl,
-      apiKey: group.apiKey,
-    }
-  );
-}
+export { resolveGroupConnection } from "./scenarioConnection";
 
 export function validateManagedConnection(connection: NewApiConnection): void {
   if (!connection.baseUrl || !connection.apiKey) {
@@ -96,13 +89,27 @@ wire_api = ${tomlString(wireApi)}
 requires_openai_auth = true`;
 }
 
+function openClawApiMode(apiFormat: string | undefined): string {
+  if (apiFormat === "anthropic") return "anthropic-messages";
+  if (apiFormat === "gemini_native") return "google-generative-ai";
+  if (apiFormat === "openai_responses") return "openai-responses";
+  return "openai-completions";
+}
+
+function hermesApiMode(apiFormat: string | undefined): string {
+  if (apiFormat === "anthropic") return "anthropic_messages";
+  if (apiFormat === "openai_responses") return "codex_responses";
+  return "chat_completions";
+}
+
 export function buildManagedProvider(
   scenario: ProductScenario,
   group: NewApiGroup,
   existingProvider?: Provider | null,
+  globalBaseUrl?: string,
 ): Provider {
   const name = managedProviderName(group);
-  const connection = resolveGroupConnection(scenario, group);
+  const connection = resolveGroupConnection(scenario, group, globalBaseUrl);
   const previous = matchingManagedProvider(existingProvider, group);
   const previousMeta = previous?.meta ?? {};
   const previousEndpoints = previousMeta.custom_endpoints ?? {};
@@ -161,7 +168,10 @@ export function buildManagedProvider(
               connection.baseUrl,
               connection.apiFormat === "openai_chat" ? "chat" : "responses",
             );
-      const rebasedConfig = setCodexBaseUrl(previousConfig, connection.baseUrl);
+      const rebasedConfig = setCodexWireApi(
+        setCodexBaseUrl(previousConfig, connection.baseUrl),
+        connection.apiFormat === "openai_chat" ? "chat" : "responses",
+      );
 
       return {
         ...common,
@@ -177,10 +187,9 @@ export function buildManagedProvider(
         meta: {
           ...common.meta,
           apiFormat:
-            previousMeta.apiFormat ??
-            (connection.apiFormat === "openai_chat"
+            connection.apiFormat === "openai_chat"
               ? "openai_chat"
-              : "openai_responses"),
+              : "openai_responses",
         },
       };
     }
@@ -202,7 +211,8 @@ export function buildManagedProvider(
     }
 
     case "opencode": {
-      const provider = `${group.apiProvider} ${group.ccProvider}`.toLowerCase();
+      const provider =
+        `${connection.apiFormat ?? ""} ${group.apiProvider} ${group.ccProvider}`.toLowerCase();
       const npm = provider.includes("anthropic")
         ? "@ai-sdk/anthropic"
         : "@ai-sdk/openai-compatible";
@@ -220,6 +230,42 @@ export function buildManagedProvider(
             setCacheKey: previousSettings.options?.setCacheKey ?? true,
           },
           models: asRecord(previousSettings.models),
+        },
+      };
+    }
+
+    case "openclaw": {
+      const previousSettings = asRecord(previous?.settingsConfig);
+      return {
+        ...common,
+        settingsConfig: {
+          ...previousSettings,
+          baseUrl: connection.baseUrl,
+          apiKey: connection.apiKey,
+          api: openClawApiMode(connection.apiFormat),
+          models: Array.isArray(previousSettings.models)
+            ? previousSettings.models
+            : [],
+        },
+      };
+    }
+
+    case "hermes": {
+      const previousSettings = asRecord(previous?.settingsConfig);
+      return {
+        ...common,
+        settingsConfig: {
+          ...previousSettings,
+          name:
+            typeof previousSettings.name === "string"
+              ? previousSettings.name
+              : PRODUCT.managedProviderId,
+          base_url: connection.baseUrl,
+          api_key: connection.apiKey,
+          api_mode: hermesApiMode(connection.apiFormat),
+          models: Array.isArray(previousSettings.models)
+            ? previousSettings.models
+            : [],
         },
       };
     }
@@ -337,20 +383,51 @@ export function applyOpenCodeModelCatalog(
   };
 }
 
+export function applyAgentModelCatalog(
+  scenario: ProductScenario,
+  provider: Provider,
+  models: Array<{ id: string; name: string }>,
+): Provider {
+  if (scenario.id === "opencode") {
+    return applyOpenCodeModelCatalog(provider, models);
+  }
+
+  const settingsConfig = asRecord(provider.settingsConfig);
+  const normalized = models
+    .map((model) => ({
+      id: model.id.replace(/[\u0000-\u001f\u007f]/g, "").trim(),
+      name: model.name.trim(),
+    }))
+    .filter((model) => model.id)
+    .map((model) => ({ id: model.id, name: model.name || model.id }));
+
+  return {
+    ...provider,
+    settingsConfig: {
+      ...settingsConfig,
+      models: normalized,
+    },
+  };
+}
+
 export async function applyManagedConfiguration(
   scenario: ProductScenario,
   group: NewApiGroup,
+  globalBaseUrl?: string,
 ): Promise<void> {
-  const next = buildManagedProvider(scenario, group);
-  await applyPreparedManagedConfiguration(scenario, group, next);
+  const next = buildManagedProvider(scenario, group, null, globalBaseUrl);
+  await applyPreparedManagedConfiguration(scenario, group, next, globalBaseUrl);
 }
 
 export async function applyPreparedManagedConfiguration(
   scenario: ProductScenario,
   group: NewApiGroup,
   next: Provider,
+  globalBaseUrl?: string,
 ): Promise<void> {
-  validateManagedConnection(resolveGroupConnection(scenario, group));
+  validateManagedConnection(
+    resolveGroupConnection(scenario, group, globalBaseUrl),
+  );
   if (next.id !== PRODUCT.managedProviderId) {
     throw new Error("托管供应商标识无效，未写入本机配置");
   }
@@ -375,5 +452,35 @@ export async function applyPreparedManagedConfiguration(
 
   if (scenario.appId !== "opencode") {
     await providersApi.switch(next.id, scenario.appId);
+  }
+
+  if (scenario.appId === "openclaw") {
+    const models = Array.isArray(next.settingsConfig.models)
+      ? next.settingsConfig.models.filter(
+          (model: unknown): model is { id: string; name?: string } =>
+            Boolean(
+              model &&
+                typeof model === "object" &&
+                typeof (model as { id?: unknown }).id === "string" &&
+                (model as { id: string }).id.trim(),
+            ),
+        )
+      : [];
+    if (models.length > 0) {
+      const modelCatalog = await openclawApi.getModelCatalog();
+      await openclawApi.setModelCatalog({
+        ...(modelCatalog ?? {}),
+        ...Object.fromEntries(
+          models.map((model) => [
+            `${next.id}/${model.id}`,
+            { alias: model.name || model.id },
+          ]),
+        ),
+      });
+      await openclawApi.setDefaultModel({
+        primary: `${next.id}/${models[0].id}`,
+        fallbacks: models.slice(1).map((model) => `${next.id}/${model.id}`),
+      });
+    }
   }
 }

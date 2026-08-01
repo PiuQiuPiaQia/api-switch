@@ -18,6 +18,7 @@ interface AccountPageProps {
   session: NewApiSession;
   bootstrap: NewApiBootstrap;
   preview: boolean;
+  globalBaseUrl?: string;
   onLogout: () => void;
 }
 
@@ -59,11 +60,13 @@ export function AccountPage({
   session,
   bootstrap,
   preview,
+  globalBaseUrl = "",
   onLogout,
 }: AccountPageProps) {
   const user = bootstrap.user;
   const accountName = resolveAccountName(user);
   const rechargeUrl = buildRechargeUrl(session.serverUrl);
+  const serviceUrl = globalBaseUrl || session.serverUrl;
 
   return (
     <div className="vv-page vv-account-page">
@@ -170,7 +173,7 @@ export function AccountPage({
           </div>
           <div>
             <dt>服务地址</dt>
-            <dd>{session.serverUrl}</dd>
+            <dd>{serviceUrl}</dd>
           </div>
           <div>
             <dt>授权时间</dt>

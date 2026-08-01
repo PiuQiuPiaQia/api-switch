@@ -3,6 +3,7 @@ import type { Provider } from "@/types";
 import { PRODUCT } from "./config";
 import {
   applyClaudeCoreModelRoutes,
+  applyAgentModelCatalog,
   applyManagedDefaultModel,
   applyOpenCodeModelCatalog,
   buildManagedProvider,
@@ -48,7 +49,19 @@ const group: NewApiGroup = {
   },
 };
 
+const openCodeScenario: ProductScenario = {
+  id: "opencode",
+  appId: "opencode",
+  tool: "opencode",
+  name: "OpenCode",
+  shortName: "OpenCode",
+  description: "",
+  accent: "#8b5cf6",
+  icon: "blocks",
+};
+
 function scenario(id: ProductScenario["id"]): ProductScenario {
+  if (id === "opencode") return openCodeScenario;
   return PRODUCT.scenarios.find((item) => item.id === id)!;
 }
 
@@ -61,6 +74,30 @@ describe("managed provider configuration", () => {
       baseUrl: group.baseUrl,
       apiKey: group.apiKey,
     });
+  });
+
+  it("overrides every scenario with the selected global Base URL", () => {
+    expect(
+      resolveGroupConnection(
+        scenario("claude"),
+        group,
+        "https://cf.vvcode.top",
+      ),
+    ).toEqual({
+      ...group.connections?.claude,
+      baseUrl: "https://cf.vvcode.top",
+    });
+
+    const provider = buildManagedProvider(
+      scenario("codex"),
+      group,
+      null,
+      "https://hk.vvcode.top",
+    );
+    expect(provider.settingsConfig.config).toContain(
+      'base_url = "https://hk.vvcode.top/v1"',
+    );
+    expect(provider.settingsConfig.auth.OPENAI_API_KEY).toBe("sk-codex");
   });
 
   it("builds Claude Code environment variables from the selected group", () => {
@@ -99,6 +136,29 @@ describe("managed provider configuration", () => {
     expect(provider.settingsConfig.config).toContain('wire_api = "chat"');
   });
 
+  it("updates an existing Codex provider when the connection protocol changes", () => {
+    const existing = buildManagedProvider(scenario("codex"), group);
+    const chatGroup: NewApiGroup = {
+      ...group,
+      connections: {
+        ...group.connections,
+        codex: {
+          baseUrl: "https://chat.example/v1",
+          apiKey: "sk-chat",
+          apiFormat: "openai_chat",
+        },
+      },
+    };
+
+    const provider = buildManagedProvider(
+      scenario("codex"),
+      chatGroup,
+      existing,
+    );
+    expect(provider.settingsConfig.config).toContain('wire_api = "chat"');
+    expect(provider.meta?.apiFormat).toBe("openai_chat");
+  });
+
   it("rejects unsafe inference endpoints before writing local config", () => {
     expect(() =>
       validateManagedConnection({
@@ -128,6 +188,57 @@ describe("managed provider configuration", () => {
       apiKey: group.apiKey,
     });
     expect(opencode.settingsConfig.models).toEqual({});
+  });
+
+  it("builds OpenClaw and Hermes providers with their native config shapes", () => {
+    const openclaw = buildManagedProvider(scenario("openclaw"), group);
+    expect(openclaw.settingsConfig).toMatchObject({
+      baseUrl: group.baseUrl,
+      apiKey: group.apiKey,
+      api: "openai-completions",
+      models: [],
+    });
+
+    const hermes = buildManagedProvider(scenario("hermes"), group);
+    expect(hermes.settingsConfig).toMatchObject({
+      name: PRODUCT.managedProviderId,
+      base_url: group.baseUrl,
+      api_key: group.apiKey,
+      api_mode: "chat_completions",
+      models: [],
+    });
+  });
+
+  it("maps Anthropic connections for OpenClaw and Hermes", () => {
+    const anthropicGroup: NewApiGroup = {
+      ...group,
+      connections: {
+        ...group.connections,
+        openclaw: {
+          baseUrl: "https://anthropic.example",
+          apiKey: "sk-claw",
+          apiFormat: "anthropic",
+        },
+        hermes: {
+          baseUrl: "https://anthropic.example",
+          apiKey: "sk-hermes",
+          apiFormat: "anthropic",
+        },
+      },
+    };
+
+    expect(
+      buildManagedProvider(scenario("openclaw"), anthropicGroup).settingsConfig,
+    ).toMatchObject({
+      baseUrl: "https://anthropic.example",
+      api: "anthropic-messages",
+    });
+    expect(
+      buildManagedProvider(scenario("hermes"), anthropicGroup).settingsConfig,
+    ).toMatchObject({
+      base_url: "https://anthropic.example",
+      api_mode: "anthropic_messages",
+    });
   });
 
   it("forces the managed Claude protocol defaults while preserving other settings", () => {
@@ -252,5 +363,22 @@ describe("managed provider configuration", () => {
     expect(opencode.settingsConfig.models).toEqual({
       "model-open": { name: "Open" },
     });
+
+    const openclaw = applyAgentModelCatalog(
+      scenario("openclaw"),
+      buildManagedProvider(scenario("openclaw"), group),
+      [{ id: "model-claw", name: "Claw" }],
+    );
+    const hermes = applyAgentModelCatalog(
+      scenario("hermes"),
+      buildManagedProvider(scenario("hermes"), group),
+      [{ id: "model-hermes", name: "Hermes" }],
+    );
+    expect(openclaw.settingsConfig.models).toEqual([
+      { id: "model-claw", name: "Claw" },
+    ]);
+    expect(hermes.settingsConfig.models).toEqual([
+      { id: "model-hermes", name: "Hermes" },
+    ]);
   });
 });

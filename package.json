@@ -41,6 +41,10 @@
     "vitest": "^2.0.5"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.20",
+    "@ai-sdk/react": "4.0.50",
+    "@assistant-ui/react": "0.15.1",
+    "@assistant-ui/react-ai-sdk": "1.4.2",
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.0",
@@ -72,6 +76,7 @@
     "@tauri-apps/plugin-log": "2.8.0",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.0.0",
+    "ai": "7.0.47",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -84,7 +89,9 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.65.0",
     "react-i18next": "^16.0.0",
+    "react-markdown": "10.1.0",
     "recharts": "^3.5.1",
+    "remark-gfm": "4.0.1",
     "smol-toml": "^1.4.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",

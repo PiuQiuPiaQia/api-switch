@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  Check,
   Globe2,
   Loader2,
   RefreshCw,
@@ -9,6 +10,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { newApiApi } from "../api";
+import {
+  loadCachedApiInfoRoutes,
+  saveCachedApiInfoRoutes,
+} from "../apiInfoPreferences";
 import {
   latencyGrade,
   normalizeProbeUrl,
@@ -19,6 +24,9 @@ import type { NewApiEndpointProbe, NewApiInfoRoute } from "../types";
 
 interface InitializationPanelProps {
   preview: boolean;
+  serverUrl: string;
+  globalBaseUrl: string;
+  onGlobalBaseUrlChange: (baseUrl: string) => void;
 }
 
 type ProbeResultMap = Record<string, NewApiEndpointProbe>;
@@ -31,7 +39,12 @@ function gradeLabel(result: NewApiEndpointProbe): string {
   return "不可达";
 }
 
-export function InitializationPanel({ preview }: InitializationPanelProps) {
+export function InitializationPanel({
+  preview,
+  serverUrl,
+  globalBaseUrl,
+  onGlobalBaseUrlChange,
+}: InitializationPanelProps) {
   const [routes, setRoutes] = useState<NewApiInfoRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -49,6 +62,7 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
         const nextRoutes = preview
           ? previewApiInfoRoutes
           : await newApiApi.getApiInfoRoutes();
+        if (!preview) saveCachedApiInfoRoutes(serverUrl, nextRoutes);
         setRoutes(nextRoutes);
         setProbeResults({});
         setProbeError(null);
@@ -62,12 +76,29 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
         setLoading(false);
       }
     },
-    [preview],
+    [preview, serverUrl],
   );
 
   useEffect(() => {
+    const cachedRoutes = preview
+      ? previewApiInfoRoutes
+      : loadCachedApiInfoRoutes(serverUrl);
+    if (cachedRoutes !== null) {
+      setRoutes(cachedRoutes);
+      setLoading(false);
+      setFetchError(null);
+      return;
+    }
     void loadRoutes();
-  }, [loadRoutes]);
+  }, [loadRoutes, preview, serverUrl]);
+
+  useEffect(() => {
+    if (!routes.length || !globalBaseUrl) return;
+    const selectedUrl = normalizeProbeUrl(globalBaseUrl);
+    if (!routes.some((route) => normalizeProbeUrl(route.url) === selectedUrl)) {
+      onGlobalBaseUrlChange("");
+    }
+  }, [globalBaseUrl, onGlobalBaseUrlChange, routes]);
 
   const runNetworkTest = async () => {
     if (!probeUrls.length) {
@@ -118,6 +149,19 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
     }
   };
 
+  const selectGlobalRoute = (route: NewApiInfoRoute, index: number) => {
+    const baseUrl = normalizeProbeUrl(route.url);
+    const result = probeResults[baseUrl];
+    if (typeof result?.latency !== "number") {
+      toast.info("请先完成网络检测，再选择可达线路");
+      return;
+    }
+    onGlobalBaseUrlChange(baseUrl);
+    toast.success(
+      `${route.route || route.description || `线路 ${index + 1}`} 已设为全局 Base URL`,
+    );
+  };
+
   return (
     <div className="vv-page vv-initialization-page">
       <header className="vv-page-heading vv-init-heading">
@@ -162,7 +206,7 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
         <header className="vv-api-list-card__header">
           <div>
             <h2>配置 URL</h2>
-            <p>从网站 API 信息中拉取到 {routes.length} 条线路。</p>
+            <p>已缓存 {routes.length} 条网站线路，重新拉取时才会更新。</p>
           </div>
           <span>{routes.length} 条</span>
         </header>
@@ -173,6 +217,7 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
               <span>线路</span>
               <span>配置 URL</span>
               <span>网络状态</span>
+              <span>全局线路</span>
             </div>
             {routes.map((route, index) => {
               const normalizedUrl = normalizeProbeUrl(route.url);
@@ -182,9 +227,12 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
                 route.route || route.description || `线路 ${index + 1}`;
               const showDescription =
                 route.description && route.description !== routeName;
+              const isSelected =
+                normalizedUrl === normalizeProbeUrl(globalBaseUrl);
+              const canSelect = typeof result?.latency === "number";
               return (
                 <div
-                  className="vv-api-row"
+                  className={`vv-api-row ${isSelected ? "is-selected" : ""}`}
                   key={`${route.id || index}:${normalizedUrl}`}
                 >
                   <span className="vv-api-name">
@@ -240,6 +288,26 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
                       </i>
                     )}
                   </span>
+                  <button
+                    type="button"
+                    className={`vv-api-select ${isSelected ? "is-selected" : ""}`}
+                    disabled={testing || isSelected || !canSelect}
+                    onClick={() => selectGlobalRoute(route, index)}
+                    title={
+                      isSelected
+                        ? "当前全局 Base URL"
+                        : canSelect
+                          ? `将 ${routeName} 设为全局 Base URL`
+                          : "完成网络检测后可选择"
+                    }
+                  >
+                    {isSelected && <Check size={12} />}
+                    {isSelected
+                      ? "当前使用"
+                      : canSelect
+                        ? "设为全局"
+                        : "检测后选择"}
+                  </button>
                 </div>
               );
             })}
@@ -262,8 +330,8 @@ export function InitializationPanel({ preview }: InitializationPanelProps) {
 
         <footer className="vv-api-list-card__note">
           <Activity size={13} />
-          仅检测上述配置 URL 的可达性与响应延迟，不读取分组 Base
-          URL，也不会调用模型。
+          检测后可选择一条可达线路作为全局 Base
+          URL；后续获取模型和应用配置都会使用该地址。
         </footer>
       </section>
     </div>

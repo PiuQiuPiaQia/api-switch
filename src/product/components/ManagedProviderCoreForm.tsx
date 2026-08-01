@@ -15,8 +15,8 @@ import {
 import { extractCodexModelName } from "@/utils/providerConfigUtils";
 import {
   applyClaudeCoreModelRoutes,
+  applyAgentModelCatalog,
   applyManagedDefaultModel,
-  applyOpenCodeModelCatalog,
   resolveGroupConnection,
   type ClaudeCoreModelRoutes,
 } from "../configuration";
@@ -26,12 +26,13 @@ interface ManagedProviderCoreFormProps {
   formId: string;
   scenario: ProductScenario;
   group: NewApiGroup;
+  globalBaseUrl?: string;
   provider: Provider;
   hasApiKey: boolean;
   onSubmit: (provider: Provider) => Promise<void> | void;
 }
 
-interface OpenCodeModelRow {
+interface AgentModelRow {
   rowId: string;
   id: string;
   name: string;
@@ -64,8 +65,29 @@ function defaultModelFromProvider(
   return "";
 }
 
-function openCodeRowsFromProvider(provider: Provider): OpenCodeModelRow[] {
-  const models = asRecord(asRecord(provider.settingsConfig).models);
+function agentRowsFromProvider(
+  scenario: ProductScenario,
+  provider: Provider,
+): AgentModelRow[] {
+  const rawModels = asRecord(provider.settingsConfig).models;
+  if (scenario.id === "openclaw" || scenario.id === "hermes") {
+    return Array.isArray(rawModels)
+      ? rawModels.flatMap((value, index) => {
+          const model = asRecord(value);
+          const id = typeof model.id === "string" ? model.id : "";
+          if (!id) return [];
+          return [
+            {
+              rowId: `existing-${index}-${id}`,
+              id,
+              name: typeof model.name === "string" ? model.name : id,
+            },
+          ];
+        })
+      : [];
+  }
+
+  const models = asRecord(rawModels);
   return Object.entries(models).map(([id, value], index) => {
     const model = asRecord(value);
     return {
@@ -80,12 +102,13 @@ export function ManagedProviderCoreForm({
   formId,
   scenario,
   group,
+  globalBaseUrl = "",
   provider,
   hasApiKey,
   onSubmit,
 }: ManagedProviderCoreFormProps) {
   const { t } = useTranslation();
-  const connection = resolveGroupConnection(scenario, group);
+  const connection = resolveGroupConnection(scenario, group, globalBaseUrl);
   const [claudeRoutes, setClaudeRoutes] = useState<ClaudeCoreModelRoutes>(
     () => ({
       sonnet: exactEnvValue(provider, "ANTHROPIC_DEFAULT_SONNET_MODEL"),
@@ -96,8 +119,8 @@ export function ManagedProviderCoreForm({
   const [defaultModel, setDefaultModel] = useState(() =>
     defaultModelFromProvider(scenario, provider),
   );
-  const [openCodeModels, setOpenCodeModels] = useState<OpenCodeModelRow[]>(() =>
-    openCodeRowsFromProvider(provider),
+  const [agentModels, setAgentModels] = useState<AgentModelRow[]>(() =>
+    agentRowsFromProvider(scenario, provider),
   );
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
@@ -137,8 +160,12 @@ export function ManagedProviderCoreForm({
       next = applyClaudeCoreModelRoutes(provider, claudeRoutes);
     } else if (scenario.id === "codex" || scenario.id === "gemini") {
       next = applyManagedDefaultModel(scenario, provider, defaultModel);
-    } else if (scenario.id === "opencode") {
-      next = applyOpenCodeModelCatalog(provider, openCodeModels);
+    } else if (
+      scenario.id === "opencode" ||
+      scenario.id === "openclaw" ||
+      scenario.id === "hermes"
+    ) {
+      next = applyAgentModelCatalog(scenario, provider, agentModels);
     }
     void onSubmit(next);
   };
@@ -147,12 +174,12 @@ export function ManagedProviderCoreForm({
     setClaudeRoutes((current) => ({ ...current, [role]: value }));
   };
 
-  const updateOpenCodeModel = (
+  const updateAgentModel = (
     rowId: string,
     field: "id" | "name",
     value: string,
   ) => {
-    setOpenCodeModels((current) =>
+    setAgentModels((current) =>
       current.map((row) =>
         row.rowId === rowId ? { ...row, [field]: value } : row,
       ),
@@ -163,7 +190,12 @@ export function ManagedProviderCoreForm({
     <form id={formId} className="vv-core-provider-form" onSubmit={handleSubmit}>
       <div className="vv-core-routes">
         <div className="vv-core-routes__heading">
-          <strong>模型配置</strong>
+          <span className="vv-core-routes__title">
+            <strong>模型配置</strong>
+            <small title={connection.baseUrl}>
+              Base URL · {connection.baseUrl}
+            </small>
+          </span>
           <button
             type="button"
             onClick={handleFetchModels}
@@ -221,18 +253,20 @@ export function ManagedProviderCoreForm({
           </label>
         )}
 
-        {scenario.id === "opencode" && (
+        {(scenario.id === "opencode" ||
+          scenario.id === "openclaw" ||
+          scenario.id === "hermes") && (
           <div className="vv-core-opencode-models">
-            {openCodeModels.length === 0 ? (
+            {agentModels.length === 0 ? (
               <p className="vv-core-empty-models">暂不限制模型列表。</p>
             ) : (
-              openCodeModels.map((row) => (
+              agentModels.map((row) => (
                 <div key={row.rowId} className="vv-core-opencode-row">
                   <div className="vv-core-opencode-model-id">
                     <input
                       value={row.id}
                       onChange={(event) =>
-                        updateOpenCodeModel(row.rowId, "id", event.target.value)
+                        updateAgentModel(row.rowId, "id", event.target.value)
                       }
                       placeholder="模型 ID"
                       autoComplete="off"
@@ -240,16 +274,14 @@ export function ManagedProviderCoreForm({
                     {fetchedModels.length > 0 && (
                       <ModelDropdown
                         models={fetchedModels}
-                        onSelect={(id) =>
-                          updateOpenCodeModel(row.rowId, "id", id)
-                        }
+                        onSelect={(id) => updateAgentModel(row.rowId, "id", id)}
                       />
                     )}
                   </div>
                   <input
                     value={row.name}
                     onChange={(event) =>
-                      updateOpenCodeModel(row.rowId, "name", event.target.value)
+                      updateAgentModel(row.rowId, "name", event.target.value)
                     }
                     placeholder="显示名称（可选）"
                     autoComplete="off"
@@ -259,7 +291,7 @@ export function ManagedProviderCoreForm({
                     className="vv-core-opencode-remove"
                     aria-label={`删除模型 ${row.id || "空白"}`}
                     onClick={() =>
-                      setOpenCodeModels((current) =>
+                      setAgentModels((current) =>
                         current.filter((item) => item.rowId !== row.rowId),
                       )
                     }
@@ -273,7 +305,7 @@ export function ManagedProviderCoreForm({
               type="button"
               className="vv-core-add-model"
               onClick={() =>
-                setOpenCodeModels((current) => [
+                setAgentModels((current) => [
                   ...current,
                   { rowId: `new-${Date.now()}`, id: "", name: "" },
                 ])

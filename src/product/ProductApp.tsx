@@ -1,11 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Blocks,
+  Bot,
   ChevronRight,
   Cloud,
   Gauge,
   Gem,
+  Feather,
   Loader2,
+  MessageSquareText,
   RefreshCw,
   Sparkles,
   TerminalSquare,
@@ -14,6 +25,10 @@ import { toast } from "sonner";
 import { settingsApi } from "@/lib/api/settings";
 import { PRODUCT } from "./config";
 import { newApiApi } from "./api";
+import {
+  loadSelectedGlobalBaseUrl,
+  saveSelectedGlobalBaseUrl,
+} from "./apiInfoPreferences";
 import { previewBootstrap, previewSession } from "./mockData";
 import { resolveAccountName } from "./userIdentity";
 import type {
@@ -31,7 +46,11 @@ import { ScenarioWorkspace } from "./components/ScenarioWorkspace";
 import { AccountPage } from "./components/AccountPage";
 import "./product.css";
 
-type ActivePage = ProductScenario["id"] | "initialize" | "account";
+type ActivePage = ProductScenario["id"] | "initialize" | "chat" | "account";
+
+const ChatPage = lazy(async () => ({
+  default: (await import("./chat/ChatPage")).ChatPage,
+}));
 
 const TOOL_CHECK_TIMEOUT_MS = 12_000;
 
@@ -76,6 +95,10 @@ function ScenarioIcon({ scenario }: { scenario: ProductScenario }) {
       return <Gem {...props} />;
     case "blocks":
       return <Blocks {...props} />;
+    case "claw":
+      return <Bot {...props} />;
+    case "hermes":
+      return <Feather {...props} />;
   }
 }
 
@@ -98,6 +121,7 @@ export default function ProductApp() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [globalBaseUrl, setGlobalBaseUrl] = useState("");
   const [activePage, setActivePage] = useState<ActivePage>("initialize");
   const [toolEnvironments, setToolEnvironments] = useState(
     createInitialToolEnvironments,
@@ -233,9 +257,13 @@ export default function ProductApp() {
               ? "服务配置已更新，请使用当前中转站重新登录"
               : "当前构建尚未配置中转站服务地址",
           );
+          setGlobalBaseUrl("");
           setSession(null);
           return;
         }
+        setGlobalBaseUrl(
+          current ? loadSelectedGlobalBaseUrl(current.serverUrl) : "",
+        );
         setSession(current);
       })
       .catch((error) =>
@@ -261,6 +289,7 @@ export default function ProductApp() {
     setLoginError(null);
     try {
       const nextSession = await newApiApi.beginOAuth(PRODUCT.newApiBaseUrl);
+      setGlobalBaseUrl(loadSelectedGlobalBaseUrl(nextSession.serverUrl));
       setSession(nextSession);
       toast.success("登录成功，正在同步可用分组");
     } catch (error) {
@@ -272,6 +301,7 @@ export default function ProductApp() {
 
   const handlePreview = () => {
     setPreview(true);
+    setGlobalBaseUrl("");
     setSession(previewSession);
     setBootstrap(previewBootstrap);
   };
@@ -288,8 +318,19 @@ export default function ProductApp() {
     setSession(null);
     setBootstrap(null);
     setPreview(false);
+    setGlobalBaseUrl("");
     setActivePage("initialize");
   };
+
+  const handleGlobalBaseUrlChange = useCallback(
+    (baseUrl: string) => {
+      setGlobalBaseUrl(baseUrl);
+      if (!preview && session) {
+        saveSelectedGlobalBaseUrl(session.serverUrl, baseUrl);
+      }
+    },
+    [preview, session],
+  );
 
   const ensureTokens = useCallback(
     async (groupId: string): Promise<NewApiBootstrap> => {
@@ -337,6 +378,16 @@ export default function ProductApp() {
               <Gauge size={18} strokeWidth={1.9} />
             </i>
             <span>初始化</span>
+          </button>
+          <button
+            type="button"
+            className={activePage === "chat" ? "is-active" : ""}
+            onClick={() => setActivePage("chat")}
+          >
+            <i style={{ "--nav-accent": "#3f8fcd" } as React.CSSProperties}>
+              <MessageSquareText size={18} strokeWidth={1.9} />
+            </i>
+            <span>对话</span>
           </button>
           <span className="vv-sidebar__label">AI工具</span>
           {PRODUCT.scenarios.map((scenario) => (
@@ -395,7 +446,11 @@ export default function ProductApp() {
           )}
         </div>
 
-        <div className="vv-main__scroll">
+        <div
+          className={`vv-main__scroll ${
+            activePage === "chat" ? "vv-main__scroll--chat" : ""
+          }`}
+        >
           {dataLoading && !bootstrap ? (
             <AppLoading />
           ) : dataError && !bootstrap ? (
@@ -418,20 +473,35 @@ export default function ProductApp() {
               </div>
             </div>
           ) : bootstrap && activePage === "initialize" ? (
-            <InitializationPanel preview={preview} />
+            <InitializationPanel
+              preview={preview}
+              serverUrl={session.serverUrl}
+              globalBaseUrl={globalBaseUrl}
+              onGlobalBaseUrlChange={handleGlobalBaseUrlChange}
+            />
           ) : bootstrap && activePage === "account" ? (
             <AccountPage
               session={session}
               bootstrap={bootstrap}
               preview={preview}
+              globalBaseUrl={globalBaseUrl}
               onLogout={() => void handleLogout()}
             />
+          ) : bootstrap && activePage === "chat" ? (
+            <Suspense fallback={<AppLoading />}>
+              <ChatPage
+                bootstrap={bootstrap}
+                preview={preview}
+                onEnsureTokens={ensureTokens}
+              />
+            </Suspense>
           ) : bootstrap && activeScenario ? (
             <ScenarioWorkspace
               key={activeScenario.id}
               scenario={activeScenario}
               bootstrap={bootstrap}
               preview={preview}
+              globalBaseUrl={globalBaseUrl}
               environment={toolEnvironments[activeScenario.id]}
               onCheckForUpdates={() => checkToolUpdate(activeScenario.id)}
               onRefreshEnvironment={() =>

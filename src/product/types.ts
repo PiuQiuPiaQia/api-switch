@@ -1,16 +1,22 @@
 import type { AppId } from "@/lib/api";
 
-export type ScenarioId = "claude" | "codex" | "gemini" | "opencode";
+export type ScenarioId =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "opencode"
+  | "openclaw"
+  | "hermes";
 
 export interface ProductScenario {
   id: ScenarioId;
   appId: AppId;
-  tool: "claude" | "codex" | "gemini" | "opencode";
+  tool: "claude" | "codex" | "gemini" | "opencode" | "openclaw" | "hermes";
   name: string;
   shortName: string;
   description: string;
   accent: string;
-  icon: "spark" | "terminal" | "gem" | "blocks";
+  icon: "spark" | "terminal" | "gem" | "blocks" | "claw" | "hermes";
 }
 
 export interface NewApiSession {

@@ -48,6 +48,7 @@ interface ScenarioWorkspaceProps {
   scenario: ProductScenario;
   bootstrap: NewApiBootstrap;
   preview: boolean;
+  globalBaseUrl?: string;
   environment: ToolEnvironmentState;
   onCheckForUpdates: () => Promise<ToolVersionInfo>;
   onRefreshEnvironment: () => Promise<ToolVersionInfo>;
@@ -170,6 +171,7 @@ export function ScenarioWorkspace({
   scenario,
   bootstrap,
   preview,
+  globalBaseUrl = "",
   environment,
   onCheckForUpdates,
   onRefreshEnvironment,
@@ -323,8 +325,10 @@ export function ScenarioWorkspace({
 
   const selectedConnection = useMemo(
     () =>
-      selectedGroup ? resolveGroupConnection(scenario, selectedGroup) : null,
-    [scenario, selectedGroup],
+      selectedGroup
+        ? resolveGroupConnection(scenario, selectedGroup, globalBaseUrl)
+        : null,
+    [globalBaseUrl, scenario, selectedGroup],
   );
   const keyPreparationIsCurrent =
     keyPreparation.groupId === (selectedGroup?.id ?? "");
@@ -345,9 +349,14 @@ export function ScenarioWorkspace({
   const managedProvider = useMemo(
     () =>
       selectedGroup
-        ? buildManagedProvider(scenario, selectedGroup, existingManagedProvider)
+        ? buildManagedProvider(
+            scenario,
+            selectedGroup,
+            existingManagedProvider,
+            globalBaseUrl,
+          )
         : null,
-    [existingManagedProvider, scenario, selectedGroup],
+    [existingManagedProvider, globalBaseUrl, scenario, selectedGroup],
   );
   const managedFormId = `vv-managed-provider-form-${scenario.id}`;
 
@@ -395,7 +404,7 @@ export function ScenarioWorkspace({
           (group) => group.id === provisionGroupId,
         );
         const nextConnection = nextGroup
-          ? resolveGroupConnection(scenario, nextGroup)
+          ? resolveGroupConnection(scenario, nextGroup, globalBaseUrl)
           : null;
         if (!nextConnection?.apiKey) {
           throw new Error("客户端密钥创建完成后未能读取，请重试");
@@ -437,6 +446,7 @@ export function ScenarioWorkspace({
         scenario,
         selectedGroup,
         configuredProvider,
+        globalBaseUrl,
       );
       setExistingManagedProvider(configuredProvider);
       toast.success(
@@ -623,10 +633,11 @@ export function ScenarioWorkspace({
                 ) : (
                   <div className="vv-managed-provider-form">
                     <ManagedProviderCoreForm
-                      key={`${scenario.id}:${selectedGroup.id}`}
+                      key={`${scenario.id}:${selectedGroup.id}:${globalBaseUrl}`}
                       formId={managedFormId}
                       scenario={scenario}
                       group={selectedGroup}
+                      globalBaseUrl={globalBaseUrl}
                       provider={managedProvider}
                       hasApiKey={keyReady}
                       onSubmit={handleConfigure}

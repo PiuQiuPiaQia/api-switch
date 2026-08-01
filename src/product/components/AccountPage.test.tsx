@@ -53,4 +53,24 @@ describe("AccountPage", () => {
       "https://vvcode.top/wallet",
     );
   });
+
+  it("shows the selected global Base URL as the service address", () => {
+    render(
+      <AccountPage
+        session={previewSession}
+        bootstrap={previewBootstrap}
+        preview={false}
+        globalBaseUrl="https://hk.vvcode.top"
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("服务地址").nextElementSibling).toHaveTextContent(
+      "https://hk.vvcode.top",
+    );
+    expect(screen.getByRole("link", { name: "去充值" })).toHaveAttribute(
+      "href",
+      "https://vvcode.top/wallet",
+    );
+  });
 });

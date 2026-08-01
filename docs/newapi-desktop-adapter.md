@@ -164,7 +164,7 @@ New-Api-User: <user-id>
 
 ## 6. 场景配置语义
 
-桌面端当前支持四个场景：
+桌面端底层保留多类配置兼容；当前 VV Code 产品界面展示 Claude Code、Codex CLI、Gemini CLI、OpenClaw（龙虾）和 Hermes，OpenCode 入口暂不展示：
 
 | 场景        | Base URL 写入位置                                                               | 分组 Key 写入位置                       | 可选模型配置                                       |
 | ----------- | ------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------- |
@@ -172,6 +172,8 @@ New-Api-User: <user-id>
 | Codex CLI   | `~/.codex/config.toml` → `[model_providers.custom].base_url`                    | `~/.codex/auth.json` → `OPENAI_API_KEY` | `config.toml` → `model`                            |
 | Gemini CLI  | `~/.gemini/.env` → `GOOGLE_GEMINI_BASE_URL`                                     | `GEMINI_API_KEY`                        | `GEMINI_MODEL`                                     |
 | OpenCode    | `~/.config/opencode/opencode.json` → `provider.vv-code-managed.options.baseURL` | `options.apiKey`                        | `provider.vv-code-managed.models` 中的手动模型目录 |
+| OpenClaw    | `~/.openclaw/openclaw.json` → `models.providers.vv-code-managed.baseUrl`        | `apiKey`                                | `models`，首个模型同步为默认模型                   |
+| Hermes      | `~/.hermes/config.yaml` → `custom_providers[].base_url`                         | `api_key`                               | `models`，切换时首个模型设为默认                   |
 
 所有模型字段默认留空：留空时不注入模型覆盖，由对应工具沿用自身默认行为；已有配置会原样回填，用户主动清空才删除该覆盖项。模型发现沿用 Switch 的按需逻辑，只有点击获取按钮才请求模型列表。
 
@@ -201,6 +203,8 @@ New-Api-User: <user-id>
 ```
 
 客户端已支持该字段，并优先使用与当前场景同名的连接；未返回 `connections` 时回退到 group 顶层的 `baseUrl` / `apiKey`。因此使用顶层字段时，中转站必须保证该入口对所选场景兼容。
+
+初始化页的 API 线路 URL 用于切换网络 origin，不会直接抹掉上述场景路径。客户端会把场景连接中的 path 迁移到所选线路：例如 Codex 的 `https://origin.example/v1` 配合线路 `https://cf.example` 会得到 `https://cf.example/v1`。如果服务端只返回纯 origin，OpenAI Chat / Responses 场景默认补 `/v1`，Anthropic / Gemini Native 场景保持纯 origin。服务端返回的自定义 path 始终优先，客户端不会把 `/api/coding` 等前缀替换成固定 `/v1`。
 
 ## 7. 标准错误
 
