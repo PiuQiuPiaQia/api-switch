@@ -3,13 +3,19 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpCircle,
+  Blocks,
+  Bot,
   Check,
   ChevronsUpDown,
   CircleDollarSign,
   Download,
+  Feather,
+  Gem,
   Loader2,
   RefreshCw,
   ServerCog,
+  Sparkles,
+  TerminalSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -43,6 +49,7 @@ import type {
   ToolVersionInfo,
 } from "../types";
 import { ManagedProviderCoreForm } from "./ManagedProviderCoreForm";
+import { PageHeading } from "./PageHeading";
 
 interface ScenarioWorkspaceProps {
   scenario: ProductScenario;
@@ -53,6 +60,8 @@ interface ScenarioWorkspaceProps {
   onCheckForUpdates: () => Promise<ToolVersionInfo>;
   onRefreshEnvironment: () => Promise<ToolVersionInfo>;
   onEnsureTokens: (groupId: string) => Promise<NewApiBootstrap>;
+  initialSelectedGroupId?: string;
+  onSelectedGroupChange?: (groupId: string) => void;
 }
 
 interface KeyPreparationState {
@@ -62,6 +71,24 @@ interface KeyPreparationState {
 }
 
 type ToolLifecycleAction = "install" | "update";
+
+function ScenarioPageIcon({ scenario }: { scenario: ProductScenario }) {
+  const props = { size: 20, strokeWidth: 1.9 };
+  switch (scenario.icon) {
+    case "spark":
+      return <Sparkles {...props} />;
+    case "terminal":
+      return <TerminalSquare {...props} />;
+    case "gem":
+      return <Gem {...props} />;
+    case "blocks":
+      return <Blocks {...props} />;
+    case "claw":
+      return <Bot {...props} />;
+    case "hermes":
+      return <Feather {...props} />;
+  }
+}
 
 function ratioLabel(value: string): string {
   if (!value) return "1×";
@@ -176,14 +203,22 @@ export function ScenarioWorkspace({
   onCheckForUpdates,
   onRefreshEnvironment,
   onEnsureTokens,
+  initialSelectedGroupId = "",
+  onSelectedGroupChange,
 }: ScenarioWorkspaceProps) {
+  const cachedGroupId = bootstrap.groups.some(
+    (group) => group.id === initialSelectedGroupId,
+  )
+    ? initialSelectedGroupId
+    : "";
   const [toolAction, setToolAction] = useState<ToolLifecycleAction | null>(
     null,
   );
   const [groupSelectorOpen, setGroupSelectorOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(
-    bootstrap.groups.find((group) => group.isDefault)?.id ??
-      bootstrap.groups[0]?.id ??
+    cachedGroupId ||
+      bootstrap.groups.find((group) => group.isDefault)?.id ||
+      bootstrap.groups[0]?.id ||
       "",
   );
   const [configuring, setConfiguring] = useState(false);
@@ -196,7 +231,7 @@ export function ScenarioWorkspace({
   const [providerLoading, setProviderLoading] = useState(!preview);
   const [existingManagedProvider, setExistingManagedProvider] =
     useState<Provider | null>(null);
-  const selectionTouchedRef = useRef(false);
+  const selectionTouchedRef = useRef(Boolean(cachedGroupId));
   const keyProvisionRequestRef = useRef(0);
   const {
     info: toolInfo,
@@ -303,6 +338,7 @@ export function ScenarioWorkspace({
         );
         if (!appliedGroup) return;
         setSelectedGroupId(appliedGroup.id);
+        onSelectedGroupChange?.(appliedGroup.id);
       })
       .catch((error) => {
         console.warn("[VV Code] Failed to load managed provider:", error);
@@ -315,7 +351,13 @@ export function ScenarioWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [bootstrap.groups, environmentReady, preview, scenario]);
+  }, [
+    bootstrap.groups,
+    environmentReady,
+    onSelectedGroupChange,
+    preview,
+    scenario,
+  ]);
 
   const selectedGroup = useMemo(
     () =>
@@ -362,19 +404,20 @@ export function ScenarioWorkspace({
 
   useEffect(() => {
     if (bootstrap.groups.some((group) => group.id === selectedGroupId)) return;
-    setSelectedGroupId(
+    const fallbackGroupId =
       bootstrap.groups.find((group) => group.isDefault)?.id ??
-        bootstrap.groups[0]?.id ??
-        "",
-    );
-  }, [bootstrap.groups, selectedGroupId]);
+      bootstrap.groups[0]?.id ??
+      "";
+    setSelectedGroupId(fallbackGroupId);
+    onSelectedGroupChange?.(fallbackGroupId);
+  }, [bootstrap.groups, onSelectedGroupChange, selectedGroupId]);
 
   useEffect(() => {
     const requestId = keyProvisionRequestRef.current + 1;
     keyProvisionRequestRef.current = requestId;
     const provisionGroupId = selectedGroup?.id ?? "";
 
-    if (!environmentReady || !provisionGroupId) {
+    if (!environmentReady || providerLoading || !provisionGroupId) {
       setKeyPreparation({
         groupId: provisionGroupId,
         phase: "checking",
@@ -383,7 +426,7 @@ export function ScenarioWorkspace({
       return;
     }
 
-    if (preview) {
+    if (preview || selectedConnection?.apiKey.trim()) {
       setKeyPreparation({
         groupId: provisionGroupId,
         phase: "ready",
@@ -428,7 +471,9 @@ export function ScenarioWorkspace({
     environmentReady,
     onEnsureTokens,
     preview,
+    providerLoading,
     scenario,
+    selectedConnection?.apiKey,
     selectedGroup?.id,
   ]);
 
@@ -486,34 +531,37 @@ export function ScenarioWorkspace({
       className="vv-page vv-scenario-page"
       style={{ "--scenario-accent": scenario.accent } as React.CSSProperties}
     >
-      <header className="vv-page-heading">
-        <div>
-          <h1>{scenario.name}</h1>
-          <p>{scenario.description}</p>
-        </div>
-        <button
-          type="button"
-          className={`vv-environment-button ${environmentReady ? "is-ready" : "is-missing"} ${updateAvailable ? "is-update" : ""} ${toolError ? "is-error" : ""}`}
-          disabled={headerBusy || !environmentReady}
-          title={headerTitle}
-          onClick={() => {
-            if (headerAction === "check") {
-              void checkForUpdates();
-            } else {
-              void runToolAction("update");
-            }
-          }}
-        >
-          {headerChecking ? (
-            <Loader2 className="vv-spin" size={15} />
-          ) : headerAction === "update" ? (
-            <ArrowUpCircle size={15} />
-          ) : (
-            <RefreshCw size={15} />
-          )}
-          <span>{headerLabel}</span>
-        </button>
-      </header>
+      <PageHeading
+        eyebrow="AI 工具配置"
+        title={scenario.name}
+        description={scenario.description}
+        icon={<ScenarioPageIcon scenario={scenario} />}
+        accent={scenario.accent}
+        actions={
+          <button
+            type="button"
+            className={`vv-environment-button ${environmentReady ? "is-ready" : "is-missing"} ${updateAvailable ? "is-update" : ""} ${toolError ? "is-error" : ""}`}
+            disabled={headerBusy || !environmentReady}
+            title={headerTitle}
+            onClick={() => {
+              if (headerAction === "check") {
+                void checkForUpdates();
+              } else {
+                void runToolAction("update");
+              }
+            }}
+          >
+            {headerChecking ? (
+              <Loader2 className="vv-spin" size={15} />
+            ) : headerAction === "update" ? (
+              <ArrowUpCircle size={15} />
+            ) : (
+              <RefreshCw size={15} />
+            )}
+            <span>{headerLabel}</span>
+          </button>
+        }
+      />
 
       {environmentReady ? (
         <section className="vv-catalog">
@@ -568,6 +616,7 @@ export function ScenarioWorkspace({
                             onSelect={() => {
                               selectionTouchedRef.current = true;
                               setSelectedGroupId(group.id);
+                              onSelectedGroupChange?.(group.id);
                               setGroupSelectorOpen(false);
                             }}
                           >

@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  Loader2,
   MessageSquareText,
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { NewApiBootstrap } from "../types";
-import { ChatRuntime } from "./ChatRuntime";
+import { fetchModelsForConfig } from "@/lib/api/model-fetch";
+import type { NewApiBootstrap, NewApiGroup } from "../types";
+import { ChatRuntime, type ChatRuntimeModel } from "./ChatRuntime";
 import {
   createChatThread,
   defaultChatGroup,
@@ -26,6 +29,54 @@ interface ChatPageProps {
   bootstrap: NewApiBootstrap;
   preview: boolean;
   onEnsureTokens: (groupId: string) => Promise<NewApiBootstrap>;
+}
+
+interface GroupModelState {
+  connectionKey: string;
+  requestKey: string;
+  status: "loading" | "ready" | "error";
+  models: ChatRuntimeModel[];
+  error?: string;
+}
+
+function groupConnectionKey(group: NewApiGroup): string {
+  return `${group.baseUrl}\u0000${group.apiKey}`;
+}
+
+function bootstrapModels(group: NewApiGroup): ChatRuntimeModel[] {
+  return group.models.map((model) => ({ id: model.id, name: model.name }));
+}
+
+function normalizeFetchedModels(
+  group: NewApiGroup,
+  models: Awaited<ReturnType<typeof fetchModelsForConfig>>,
+): ChatRuntimeModel[] {
+  const cachedNames = new Map(
+    group.models.map((model) => [model.id, model.name] as const),
+  );
+  const seen = new Set<string>();
+  const normalized: ChatRuntimeModel[] = [];
+  for (const model of models) {
+    const id = model.id.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    normalized.push({ id, name: cachedNames.get(id) || id });
+  }
+  return normalized;
+}
+
+export function resolveChatModelId(
+  currentModelId: string,
+  defaultModelId: string,
+  models: ChatRuntimeModel[],
+): string {
+  if (models.some((model) => model.id === currentModelId)) {
+    return currentModelId;
+  }
+  if (models.some((model) => model.id === defaultModelId)) {
+    return defaultModelId;
+  }
+  return models[0]?.id ?? "";
 }
 
 function formatThreadTime(timestamp: number): string {
@@ -49,16 +100,18 @@ function reconcileThread(
   bootstrap: NewApiBootstrap,
 ): ChatThreadRecord {
   const fallbackGroup = defaultChatGroup(bootstrap);
-  const group =
-    bootstrap.groups.find((item) => item.id === thread.groupId) ??
-    fallbackGroup;
+  const existingGroup = bootstrap.groups.find(
+    (item) => item.id === thread.groupId,
+  );
+  if (existingGroup) return thread;
+
   const model =
-    group?.models.find((item) => item.id === thread.modelId) ??
-    group?.models.find((item) => item.id === group.defaultModelId) ??
-    group?.models[0];
+    fallbackGroup?.models.find(
+      (item) => item.id === fallbackGroup.defaultModelId,
+    ) ?? fallbackGroup?.models[0];
   return {
     ...thread,
-    groupId: group?.id ?? "",
+    groupId: fallbackGroup?.id ?? "",
     modelId: model?.id ?? "",
   };
 }
@@ -79,6 +132,16 @@ export function ChatPage({
     status: "idle" | "loading" | "error";
     error?: string;
   }>({ groupId: "", status: "idle" });
+  const [modelStates, setModelStates] = useState<
+    Record<string, GroupModelState>
+  >({});
+  const [modelRefreshVersion, setModelRefreshVersion] = useState(0);
+  const inFlightModelRequests = useRef(
+    new Map<
+      string,
+      Promise<Awaited<ReturnType<typeof fetchModelsForConfig>>>
+    >(),
+  );
 
   useEffect(() => {
     saveChatStore(bootstrap.user.id, store);
@@ -113,18 +176,35 @@ export function ChatPage({
     [activeThread?.groupId, bootstrap],
   );
 
-  const selectedModel = useMemo(
-    () =>
-      selectedGroup?.models.find(
-        (model) => model.id === activeThread?.modelId,
-      ) ??
-      selectedGroup?.models.find(
+  const selectedModelState = selectedGroup
+    ? modelStates[selectedGroup.id]
+    : undefined;
+  const selectedConnectionKey = selectedGroup
+    ? groupConnectionKey(selectedGroup)
+    : "";
+  const currentModelState =
+    selectedModelState?.connectionKey === selectedConnectionKey
+      ? selectedModelState
+      : undefined;
+  const availableModels = useMemo(() => {
+    if (!selectedGroup) return [];
+    if (preview || currentModelState?.status !== "ready") {
+      return bootstrapModels(selectedGroup);
+    }
+    return currentModelState.models;
+  }, [currentModelState, preview, selectedGroup]);
+
+  const selectedModel = useMemo(() => {
+    if (!selectedGroup) return null;
+    return (
+      availableModels.find((model) => model.id === activeThread?.modelId) ??
+      availableModels.find(
         (model) => model.id === selectedGroup.defaultModelId,
       ) ??
-      selectedGroup?.models[0] ??
-      null,
-    [activeThread?.modelId, selectedGroup],
-  );
+      availableModels[0] ??
+      null
+    );
+  }, [activeThread?.modelId, availableModels, selectedGroup]);
 
   useEffect(() => {
     if (preview || !selectedGroup || selectedGroup.apiKey) {
@@ -157,6 +237,86 @@ export function ChatPage({
     };
   }, [onEnsureTokens, preview, selectedGroup]);
 
+  useEffect(() => {
+    if (
+      preview ||
+      !selectedGroup?.id ||
+      !selectedGroup.baseUrl ||
+      !selectedGroup.apiKey
+    ) {
+      return;
+    }
+
+    const group = selectedGroup;
+    const connectionKey = groupConnectionKey(group);
+    const requestKey = `${connectionKey}\u0000${modelRefreshVersion}`;
+    setModelStates((current) => ({
+      ...current,
+      [group.id]: {
+        connectionKey,
+        requestKey,
+        status: "loading",
+        models: [],
+      },
+    }));
+
+    let request = inFlightModelRequests.current.get(requestKey);
+    if (!request) {
+      request = fetchModelsForConfig(group.baseUrl, group.apiKey);
+      inFlightModelRequests.current.set(requestKey, request);
+      void request.then(
+        () => inFlightModelRequests.current.delete(requestKey),
+        () => inFlightModelRequests.current.delete(requestKey),
+      );
+    }
+
+    let cancelled = false;
+    void request
+      .then((models) => {
+        if (cancelled) return;
+        const normalized = normalizeFetchedModels(group, models);
+        setModelStates((current) => {
+          if (current[group.id]?.requestKey !== requestKey) return current;
+          return {
+            ...current,
+            [group.id]: {
+              connectionKey,
+              requestKey,
+              status: "ready",
+              models: normalized,
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("[VV Code] Failed to fetch chat models:", error);
+        setModelStates((current) => {
+          if (current[group.id]?.requestKey !== requestKey) return current;
+          return {
+            ...current,
+            [group.id]: {
+              connectionKey,
+              requestKey,
+              status: "error",
+              models: [],
+              error: error instanceof Error ? error.message : String(error),
+            },
+          };
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    modelRefreshVersion,
+    preview,
+    selectedGroup?.apiKey,
+    selectedGroup?.baseUrl,
+    selectedGroup?.id,
+  ]);
+
   const filteredThreads = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return [...store.threads]
@@ -182,6 +342,21 @@ export function ChatPage({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!activeThread || !selectedGroup || availableModels.length === 0) return;
+    const modelId = resolveChatModelId(
+      activeThread.modelId,
+      selectedGroup.defaultModelId,
+      availableModels,
+    );
+    if (modelId === activeThread.modelId) return;
+    updateThread(activeThread.id, (thread) => ({
+      ...thread,
+      modelId,
+      updatedAt: Date.now(),
+    }));
+  }, [activeThread, availableModels, selectedGroup, updateThread]);
 
   const createThread = useCallback(() => {
     const thread = createChatThread(bootstrap);
@@ -269,6 +444,14 @@ export function ChatPage({
     tokenState.groupId === selectedGroup?.id && tokenState.status === "error"
       ? tokenState.error
       : null;
+  const modelsAreLoading = currentModelState?.status === "loading";
+  const modelError =
+    currentModelState?.status === "error" ? currentModelState.error : null;
+  const modelsLoadedEmpty =
+    currentModelState?.status === "ready" && availableModels.length === 0;
+  const refreshModels = useCallback(() => {
+    setModelRefreshVersion((current) => current + 1);
+  }, []);
   const canRun = Boolean(
     activeThread &&
       selectedGroup &&
@@ -418,7 +601,7 @@ export function ChatPage({
               <span>模型</span>
               <select
                 value={selectedModel?.id ?? ""}
-                disabled={!activeThread || !selectedGroup?.models.length}
+                disabled={!activeThread || availableModels.length === 0}
                 onChange={(event) => {
                   if (!activeThread) return;
                   updateThread(activeThread.id, (thread) => ({
@@ -428,13 +611,40 @@ export function ChatPage({
                   }));
                 }}
               >
-                {selectedGroup?.models.map((model) => (
+                {modelsAreLoading && availableModels.length === 0 && (
+                  <option value="">正在拉取模型…</option>
+                )}
+                {modelError && availableModels.length === 0 && (
+                  <option value="">模型加载失败</option>
+                )}
+                {modelsLoadedEmpty && <option value="">暂无模型</option>}
+                {availableModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name || model.id}
                   </option>
                 ))}
               </select>
             </label>
+            {!preview && (
+              <button
+                type="button"
+                className="vv-chat-model-refresh"
+                onClick={refreshModels}
+                disabled={
+                  modelsAreLoading ||
+                  !selectedGroup?.baseUrl ||
+                  !selectedGroup?.apiKey
+                }
+                title="重新拉取模型"
+                aria-label="重新拉取模型"
+              >
+                {modelsAreLoading ? (
+                  <Loader2 className="vv-spin" size={13} />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+              </button>
+            )}
           </div>
         </header>
 
@@ -450,11 +660,34 @@ export function ChatPage({
               <strong>暂时无法准备分组密钥</strong>
               <p>{tokenError}</p>
             </div>
+          ) : modelsAreLoading && availableModels.length === 0 ? (
+            <div className="vv-chat-unavailable">
+              <span className="vv-spin" />
+              <strong>正在拉取模型列表</strong>
+              <p>正在读取当前分组通过 /v1/models 提供的可用模型。</p>
+            </div>
+          ) : modelError && availableModels.length === 0 ? (
+            <div className="vv-chat-unavailable is-error">
+              <strong>模型列表加载失败</strong>
+              <p>{modelError}</p>
+              <button type="button" onClick={refreshModels}>
+                <RefreshCw size={13} /> 重新拉取
+              </button>
+            </div>
+          ) : modelsLoadedEmpty ? (
+            <div className="vv-chat-unavailable">
+              <MessageSquareText size={28} />
+              <strong>当前分组没有返回可用模型</strong>
+              <p>请检查分组的 Base URL，或重新拉取模型列表。</p>
+              <button type="button" onClick={refreshModels}>
+                <RefreshCw size={13} /> 重新拉取
+              </button>
+            </div>
           ) : !canRun || !activeThread || !selectedGroup || !selectedModel ? (
             <div className="vv-chat-unavailable">
               <MessageSquareText size={28} />
               <strong>当前没有可用的对话模型</strong>
-              <p>请先同步分组配置，或确认当前分组已配置模型和密钥。</p>
+              <p>请先同步分组配置，或确认当前分组已配置密钥。</p>
             </div>
           ) : (
             <ChatRuntime

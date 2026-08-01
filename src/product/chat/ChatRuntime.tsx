@@ -40,13 +40,18 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DirectChatTransport, ToolLoopAgent } from "ai";
-import type { NewApiGroup, NewApiModel } from "../types";
+import type { NewApiGroup } from "../types";
 import type { ChatMessage, ChatThreadRecord } from "./storage";
+
+export interface ChatRuntimeModel {
+  id: string;
+  name: string;
+}
 
 interface ChatRuntimeProps {
   thread: ChatThreadRecord;
   group: NewApiGroup;
-  model: NewApiModel;
+  model: ChatRuntimeModel;
   onMessagesChange: (messages: ChatMessage[]) => void;
   onError: (message: string) => void;
 }

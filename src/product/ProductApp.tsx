@@ -29,6 +29,10 @@ import {
   loadSelectedGlobalBaseUrl,
   saveSelectedGlobalBaseUrl,
 } from "./apiInfoPreferences";
+import {
+  loadSelectedScenarioGroup,
+  saveSelectedScenarioGroup,
+} from "./scenarioPreferences";
 import { previewBootstrap, previewSession } from "./mockData";
 import { resolveAccountName } from "./userIdentity";
 import type {
@@ -127,6 +131,7 @@ export default function ProductApp() {
     createInitialToolEnvironments,
   );
   const initialToolCheckStartedRef = useRef(false);
+  const tokenRequestsRef = useRef(new Map<string, Promise<NewApiBootstrap>>());
 
   const refreshToolEnvironment = useCallback(
     async (scenarioId: ScenarioId): Promise<ToolVersionInfo> => {
@@ -320,6 +325,7 @@ export default function ProductApp() {
     setPreview(false);
     setGlobalBaseUrl("");
     setActivePage("initialize");
+    tokenRequestsRef.current.clear();
   };
 
   const handleGlobalBaseUrlChange = useCallback(
@@ -335,16 +341,55 @@ export default function ProductApp() {
   const ensureTokens = useCallback(
     async (groupId: string): Promise<NewApiBootstrap> => {
       if (preview) return previewBootstrap;
-      const next = await newApiApi.ensureGroupTokens(groupId);
-      setBootstrap(next);
-      return next;
+      const requestKey = `${session?.serverUrl ?? ""}\u0000${session?.userId ?? ""}\u0000${groupId}`;
+      const pending = tokenRequestsRef.current.get(requestKey);
+      if (pending) return await pending;
+
+      const request = newApiApi.ensureGroupTokens(groupId).then((next) => {
+        setBootstrap(next);
+        return next;
+      });
+      tokenRequestsRef.current.set(requestKey, request);
+      try {
+        return await request;
+      } finally {
+        if (tokenRequestsRef.current.get(requestKey) === request) {
+          tokenRequestsRef.current.delete(requestKey);
+        }
+      }
     },
-    [preview],
+    [preview, session?.serverUrl, session?.userId],
   );
 
   const activeScenario = useMemo(
     () => PRODUCT.scenarios.find((scenario) => scenario.id === activePage),
     [activePage],
+  );
+  const sessionServerUrl = session?.serverUrl ?? "";
+  const bootstrapUserId = bootstrap?.user.id ?? 0;
+  const selectedScenarioGroupId = useMemo(() => {
+    if (preview || !activeScenario || !bootstrapUserId || !sessionServerUrl) {
+      return "";
+    }
+    return loadSelectedScenarioGroup(
+      sessionServerUrl,
+      bootstrapUserId,
+      activeScenario.id,
+    );
+  }, [activeScenario, bootstrapUserId, preview, sessionServerUrl]);
+  const handleSelectedScenarioGroupChange = useCallback(
+    (groupId: string) => {
+      if (preview || !activeScenario || !bootstrapUserId || !sessionServerUrl) {
+        return;
+      }
+      saveSelectedScenarioGroup(
+        sessionServerUrl,
+        bootstrapUserId,
+        activeScenario.id,
+        groupId,
+      );
+    },
+    [activeScenario, bootstrapUserId, preview, sessionServerUrl],
   );
 
   if (booting) return <AppLoading />;
@@ -508,6 +553,8 @@ export default function ProductApp() {
                 refreshToolEnvironment(activeScenario.id)
               }
               onEnsureTokens={ensureTokens}
+              initialSelectedGroupId={selectedScenarioGroupId}
+              onSelectedGroupChange={handleSelectedScenarioGroupChange}
             />
           ) : null}
         </div>

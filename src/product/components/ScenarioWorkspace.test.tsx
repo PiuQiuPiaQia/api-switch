@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRODUCT } from "../config";
+import { managedProviderName } from "../configuration";
 import type { NewApiBootstrap, ToolVersionInfo } from "../types";
 import { ScenarioWorkspace } from "./ScenarioWorkspace";
 
@@ -84,15 +85,22 @@ const bootstrapWithLegacyKey: NewApiBootstrap = {
 
 function AutoProvisionHarness({
   initialBootstrap = bootstrapWithoutKey,
+  ensuredBootstrap = bootstrapWithKey,
+  initialSelectedGroupId,
 }: {
   initialBootstrap?: NewApiBootstrap;
+  ensuredBootstrap?: NewApiBootstrap;
+  initialSelectedGroupId?: string;
 }) {
   const [bootstrap, setBootstrap] = useState(initialBootstrap);
-  const ensureTokens = useCallback(async (groupId: string) => {
-    apiMocks.ensureTokens(groupId);
-    setBootstrap(bootstrapWithKey);
-    return bootstrapWithKey;
-  }, []);
+  const ensureTokens = useCallback(
+    async (groupId: string) => {
+      apiMocks.ensureTokens(groupId);
+      setBootstrap(ensuredBootstrap);
+      return ensuredBootstrap;
+    },
+    [ensuredBootstrap],
+  );
 
   return (
     <ScenarioWorkspace
@@ -103,6 +111,7 @@ function AutoProvisionHarness({
       onCheckForUpdates={apiMocks.checkForUpdates}
       onRefreshEnvironment={apiMocks.refreshEnvironment}
       onEnsureTokens={ensureTokens}
+      initialSelectedGroupId={initialSelectedGroupId}
     />
   );
 }
@@ -135,16 +144,88 @@ describe("ScenarioWorkspace", () => {
     );
   });
 
-  it("checks the desktop key even when a legacy compatibility key exists", async () => {
+  it("reuses a credential already present in bootstrap", async () => {
     render(<AutoProvisionHarness initialBootstrap={bootstrapWithLegacyKey} />);
 
     await waitFor(() =>
-      expect(apiMocks.ensureTokens).toHaveBeenCalledWith("daily"),
-    );
-    expect(apiMocks.ensureTokens).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
       expect(screen.getByRole("button", { name: "应用配置" })).toBeEnabled(),
     );
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
+  });
+
+  it("restores the cached group before preparing credentials", async () => {
+    const performanceGroup = {
+      ...bootstrapWithoutKey.groups[0],
+      id: "performance",
+      name: "高性能组",
+      isDefault: false,
+    };
+    const initialBootstrap: NewApiBootstrap = {
+      ...bootstrapWithoutKey,
+      groups: [bootstrapWithoutKey.groups[0], performanceGroup],
+    };
+    const ensuredBootstrap: NewApiBootstrap = {
+      ...initialBootstrap,
+      groups: initialBootstrap.groups.map((group) =>
+        group.id === "performance"
+          ? { ...group, apiKey: "sk-performance-ready" }
+          : group,
+      ),
+    };
+
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={initialBootstrap}
+        ensuredBootstrap={ensuredBootstrap}
+        initialSelectedGroupId="performance"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.ensureTokens).toHaveBeenCalledWith("performance"),
+    );
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalledWith("daily");
+  });
+
+  it("waits for the applied provider group before preparing credentials", async () => {
+    const performanceGroup = {
+      ...bootstrapWithoutKey.groups[0],
+      id: "performance",
+      name: "高性能组",
+      isDefault: false,
+    };
+    const initialBootstrap: NewApiBootstrap = {
+      ...bootstrapWithoutKey,
+      groups: [bootstrapWithoutKey.groups[0], performanceGroup],
+    };
+    const ensuredBootstrap: NewApiBootstrap = {
+      ...initialBootstrap,
+      groups: initialBootstrap.groups.map((group) =>
+        group.id === "performance"
+          ? { ...group, apiKey: "sk-performance-ready" }
+          : group,
+      ),
+    };
+    apiMocks.getProviders.mockResolvedValue({
+      [PRODUCT.managedProviderId]: {
+        id: PRODUCT.managedProviderId,
+        name: managedProviderName(performanceGroup),
+        settingsConfig: {},
+      },
+    });
+
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={initialBootstrap}
+        ensuredBootstrap={ensuredBootstrap}
+        initialSelectedGroupId="removed-group"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.ensureTokens).toHaveBeenCalledWith("performance"),
+    );
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalledWith("daily");
   });
 
   it("reuses the app-level environment state without checking again on mount", async () => {

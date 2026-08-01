@@ -21,6 +21,7 @@ import {
 } from "../initialization";
 import { previewApiInfoRoutes } from "../mockData";
 import type { NewApiEndpointProbe, NewApiInfoRoute } from "../types";
+import { PageHeading } from "./PageHeading";
 
 interface InitializationPanelProps {
   preview: boolean;
@@ -164,36 +165,40 @@ export function InitializationPanel({
 
   return (
     <div className="vv-page vv-initialization-page">
-      <header className="vv-page-heading vv-init-heading">
-        <div>
-          <h1>API 信息</h1>
-          <p>已配置路由和延迟检测</p>
-        </div>
-        <div className="vv-init-heading__actions">
-          <button
-            type="button"
-            className="vv-secondary-button"
-            disabled={loading || testing}
-            onClick={() => void loadRoutes(true)}
-          >
-            <RefreshCw className={loading ? "vv-spin" : ""} size={15} />
-            {loading ? "拉取中" : "重新拉取"}
-          </button>
-          <button
-            type="button"
-            className="vv-primary-button"
-            disabled={loading || testing || routes.length === 0}
-            onClick={() => void runNetworkTest()}
-          >
-            {testing ? (
-              <Loader2 className="vv-spin" size={15} />
-            ) : (
-              <Activity size={15} />
-            )}
-            {testing ? "正在检测" : "一键网络检测"}
-          </button>
-        </div>
-      </header>
+      <PageHeading
+        className="vv-init-heading"
+        eyebrow="连接准备"
+        title="API 信息"
+        description="管理配置线路，并通过延迟检测选择全局连接。"
+        icon={<Globe2 size={20} strokeWidth={1.9} />}
+        accent="#6658ee"
+        actions={
+          <>
+            <button
+              type="button"
+              className="vv-secondary-button"
+              disabled={loading || testing}
+              onClick={() => void loadRoutes(true)}
+            >
+              <RefreshCw className={loading ? "vv-spin" : ""} size={15} />
+              {loading ? "拉取中" : "重新拉取"}
+            </button>
+            <button
+              type="button"
+              className="vv-primary-button"
+              disabled={loading || testing || routes.length === 0}
+              onClick={() => void runNetworkTest()}
+            >
+              {testing ? (
+                <Loader2 className="vv-spin" size={15} />
+              ) : (
+                <Activity size={15} />
+              )}
+              {testing ? "正在检测" : "一键网络检测"}
+            </button>
+          </>
+        }
+      />
 
       {(fetchError || probeError) && (
         <div className="vv-init-alert" role="alert">
