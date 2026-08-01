@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { PRODUCT } from "../config";
 import type { NewApiBootstrap, NewApiSession } from "../types";
+import { resolveAccountName } from "../userIdentity";
 
 interface AccountPageProps {
   session: NewApiSession;
@@ -61,6 +62,7 @@ export function AccountPage({
   onLogout,
 }: AccountPageProps) {
   const user = bootstrap.user;
+  const accountName = resolveAccountName(user);
   const rechargeUrl = buildRechargeUrl(session.serverUrl);
 
   return (
@@ -82,14 +84,14 @@ export function AccountPage({
 
       <section className="vv-account-hero">
         <div className="vv-account-avatar">
-          {(user.displayName || user.username || "V").slice(0, 1).toUpperCase()}
+          {accountName.slice(0, 1).toUpperCase()}
           <span>
             <BadgeCheck size={16} />
           </span>
         </div>
         <div className="vv-account-identity">
           <div className="vv-account-identity__name">
-            <h2>{user.displayName || user.username}</h2>
+            <h2>{accountName}</h2>
             <span>已授权</span>
           </div>
           <p>@{user.username}</p>

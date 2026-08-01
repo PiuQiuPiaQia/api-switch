@@ -15,6 +15,7 @@ import { settingsApi } from "@/lib/api/settings";
 import { PRODUCT } from "./config";
 import { newApiApi } from "./api";
 import { previewBootstrap, previewSession } from "./mockData";
+import { resolveAccountName } from "./userIdentity";
 import type {
   NewApiBootstrap,
   NewApiSession,
@@ -317,6 +318,9 @@ export default function ProductApp() {
     );
   }
 
+  const sidebarIdentity = bootstrap?.user ?? session;
+  const sidebarAccountName = resolveAccountName(sidebarIdentity);
+
   return (
     <div className="vv-shell">
       <aside className="vv-sidebar">
@@ -361,12 +365,10 @@ export default function ProductApp() {
             onClick={() => setActivePage("account")}
           >
             <span className="vv-sidebar__avatar">
-              {(session.displayName || session.username || "V")
-                .slice(0, 1)
-                .toUpperCase()}
+              {sidebarAccountName.slice(0, 1).toUpperCase()}
             </span>
             <span className="vv-sidebar__user">
-              <strong>{session.displayName || session.username}</strong>
+              <strong>{sidebarAccountName}</strong>
               <small>{preview ? "开发预览" : "账号已连接"}</small>
             </span>
             <ChevronRight size={14} strokeWidth={2} />

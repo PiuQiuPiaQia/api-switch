@@ -97,6 +97,9 @@ describe("ProductApp tool environment checks", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "进入预览" }));
 
+    expect(screen.getByText("preview")).toBeInTheDocument();
+    expect(screen.queryByText("体验用户")).not.toBeInTheDocument();
+
     await waitFor(() =>
       expect(mocks.getToolVersions).toHaveBeenCalledTimes(
         PRODUCT.scenarios.length,

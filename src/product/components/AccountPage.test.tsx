@@ -4,6 +4,34 @@ import { previewBootstrap, previewSession } from "../mockData";
 import { AccountPage } from "./AccountPage";
 
 describe("AccountPage", () => {
+  it("uses the account username instead of a misleading display name", () => {
+    render(
+      <AccountPage
+        session={{
+          ...previewSession,
+          username: "alice",
+          displayName: "Root User",
+        }}
+        bootstrap={{
+          ...previewBootstrap,
+          user: {
+            ...previewBootstrap.user,
+            username: "alice",
+            displayName: "Root User",
+          },
+        }}
+        preview={false}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "alice", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("@alice")).toBeInTheDocument();
+    expect(screen.queryByText(/root user/i)).not.toBeInTheDocument();
+  });
+
   it("shows the wallet balance and links to the website recharge page", () => {
     render(
       <AccountPage
