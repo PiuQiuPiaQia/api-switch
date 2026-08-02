@@ -59,6 +59,43 @@ describe("scenario connection resolution", () => {
     expect(resolveGroupConnection(scenario("gemini"), group).baseUrl).toBe(
       "https://vvcode.top",
     );
+    expect(
+      resolveGroupConnection(scenario("claude-desktop"), group).baseUrl,
+    ).toBe("https://vvcode.top");
+  });
+
+  it("lets Claude Desktop override or inherit the Claude connection", () => {
+    const withConnections: NewApiGroup = {
+      ...group,
+      connections: {
+        claude: {
+          baseUrl: "https://claude.example",
+          apiKey: "sk-claude",
+          apiFormat: "anthropic",
+        },
+      },
+    };
+
+    expect(
+      resolveGroupConnection(scenario("claude-desktop"), withConnections),
+    ).toMatchObject({
+      baseUrl: "https://claude.example",
+      apiKey: "sk-claude",
+      apiFormat: "anthropic",
+    });
+
+    withConnections.connections!["claude-desktop"] = {
+      baseUrl: "https://desktop.example/v1",
+      apiKey: "sk-desktop",
+      apiFormat: "openai-chat",
+    };
+    expect(
+      resolveGroupConnection(scenario("claude-desktop"), withConnections),
+    ).toMatchObject({
+      baseUrl: "https://desktop.example/v1",
+      apiKey: "sk-desktop",
+      apiFormat: "openai_chat",
+    });
   });
 
   it("moves the scenario path to the selected route origin", () => {

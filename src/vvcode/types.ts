@@ -2,6 +2,7 @@ import type { AppId } from "@/lib/api";
 
 export type ScenarioId =
   | "claude"
+  | "claude-desktop"
   | "codex"
   | "gemini"
   | "opencode"
@@ -11,7 +12,14 @@ export type ScenarioId =
 export interface ProductScenario {
   id: ScenarioId;
   appId: AppId;
-  tool: "claude" | "codex" | "gemini" | "opencode" | "openclaw" | "hermes";
+  tool:
+    | "claude"
+    | "codex"
+    | "gemini"
+    | "opencode"
+    | "openclaw"
+    | "hermes"
+    | null;
   name: string;
   shortName: string;
   description: string;

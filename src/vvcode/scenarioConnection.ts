@@ -48,6 +48,7 @@ function inferredApiFormat(
   if (explicit) return explicit;
 
   if (scenario.id === "claude") return "anthropic";
+  if (scenario.id === "claude-desktop") return "anthropic";
   if (scenario.id === "codex") return "openai_responses";
   if (scenario.id === "gemini") return "gemini_native";
 
@@ -122,10 +123,13 @@ export function resolveGroupConnection(
   group: NewApiGroup,
   routeBaseUrl?: string,
 ): NewApiConnection {
-  const connection = group.connections?.[scenario.id] ?? {
-    baseUrl: group.baseUrl,
-    apiKey: group.apiKey,
-  };
+  const connection = group.connections?.[scenario.id] ??
+    (scenario.id === "claude-desktop"
+      ? group.connections?.claude
+      : undefined) ?? {
+      baseUrl: group.baseUrl,
+      apiKey: group.apiKey,
+    };
   const apiFormat = inferredApiFormat(scenario, group, connection);
 
   return {

@@ -164,18 +164,19 @@ New-Api-User: <user-id>
 
 ## 6. 场景配置语义
 
-桌面端底层保留多类配置兼容；当前 VV Code 产品界面展示 Claude Code、Codex CLI、Gemini CLI、OpenClaw（龙虾）和 Hermes，OpenCode 入口暂不展示：
+桌面端底层保留多类配置兼容；当前 VV Code 产品界面展示 Claude Code、Claude Desktop、Codex（桌面端 / CLI）、Gemini CLI、OpenClaw（龙虾）和 Hermes，OpenCode 入口暂不展示：
 
-| 场景        | Base URL 写入位置                                                               | 分组 Key 写入位置                       | 可选模型配置                                       |
-| ----------- | ------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------- |
-| Claude Code | `~/.claude/settings.json` → `env.ANTHROPIC_BASE_URL`                            | `ANTHROPIC_AUTH_TOKEN`                  | `DEFAULT_SONNET/OPUS/HAIKU_MODEL`                  |
-| Codex CLI   | `~/.codex/config.toml` → `[model_providers.custom].base_url`                    | `~/.codex/auth.json` → `OPENAI_API_KEY` | `config.toml` → `model`                            |
-| Gemini CLI  | `~/.gemini/.env` → `GOOGLE_GEMINI_BASE_URL`                                     | `GEMINI_API_KEY`                        | `GEMINI_MODEL`                                     |
-| OpenCode    | `~/.config/opencode/opencode.json` → `provider.vv-code-managed.options.baseURL` | `options.apiKey`                        | `provider.vv-code-managed.models` 中的手动模型目录 |
-| OpenClaw    | `~/.openclaw/openclaw.json` → `models.providers.vv-code-managed.baseUrl`        | `apiKey`                                | `models`，首个模型同步为默认模型                   |
-| Hermes      | `~/.hermes/config.yaml` → `custom_providers[].base_url`                         | `api_key`                               | `models`，切换时首个模型设为默认                   |
+| 场景               | Base URL 写入位置                                                               | 分组 Key 写入位置                       | 可选模型配置                                       |
+| ------------------ | ------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------- |
+| Claude Code        | `~/.claude/settings.json` → `env.ANTHROPIC_BASE_URL`                            | `ANTHROPIC_AUTH_TOKEN`                  | `DEFAULT_SONNET/OPUS/HAIKU_MODEL`                  |
+| Claude Desktop     | Claude Desktop `Claude-3p` 配置库中的 VV Code profile                           | profile 的 inference gateway Key        | 客户端从接口自动读取模型                           |
+| Codex 桌面端 / CLI | `~/.codex/config.toml` → `[model_providers.custom].base_url`                    | `~/.codex/auth.json` → `OPENAI_API_KEY` | `config.toml` → `model`                            |
+| Gemini CLI         | `~/.gemini/.env` → `GOOGLE_GEMINI_BASE_URL`                                     | `GEMINI_API_KEY`                        | `GEMINI_MODEL`                                     |
+| OpenCode           | `~/.config/opencode/opencode.json` → `provider.vv-code-managed.options.baseURL` | `options.apiKey`                        | `provider.vv-code-managed.models` 中的手动模型目录 |
+| OpenClaw           | `~/.openclaw/openclaw.json` → `models.providers.vv-code-managed.baseUrl`        | `apiKey`                                | `models`，首个模型同步为默认模型                   |
+| Hermes             | `~/.hermes/config.yaml` → `custom_providers[].base_url`                         | `api_key`                               | `models`，切换时首个模型设为默认                   |
 
-所有模型字段默认留空：留空时不注入模型覆盖，由对应工具沿用自身默认行为；已有配置会原样回填，用户主动清空才删除该覆盖项。模型发现沿用 Switch 的按需逻辑，只有点击获取按钮才请求模型列表。
+模型字段默认留空：留空时不注入模型覆盖，由对应工具沿用自身默认行为；已有配置会原样回填，用户主动清空才删除该覆盖项。Claude Desktop 使用 CC Switch 已有的直连 profile 写入能力，直接写入分组的 Anthropic 兼容地址与专属 Key，不启用本地路由；应用配置后只需重启 Claude Desktop，VV Code 无需保持运行。Claude Desktop 的模型列表由客户端从接口自动读取，其他场景的模型发现沿用 Switch 的按需逻辑，只有点击获取按钮才请求模型列表。
 
 如果同一分组对不同协议需要不同地址，聚合接口可在 group 中返回：
 
@@ -183,6 +184,11 @@ New-Api-User: <user-id>
 {
   "connections": {
     "claude": { "baseUrl": "...", "apiKey": "...", "apiFormat": "anthropic" },
+    "claude-desktop": {
+      "baseUrl": "...",
+      "apiKey": "...",
+      "apiFormat": "anthropic"
+    },
     "codex": {
       "baseUrl": "...",
       "apiKey": "...",
@@ -202,7 +208,7 @@ New-Api-User: <user-id>
 }
 ```
 
-客户端已支持该字段，并优先使用与当前场景同名的连接；未返回 `connections` 时回退到 group 顶层的 `baseUrl` / `apiKey`。因此使用顶层字段时，中转站必须保证该入口对所选场景兼容。
+客户端已支持该字段，并优先使用与当前场景同名的连接；Claude Desktop 未返回独立连接时会复用 `claude` 连接，其余场景未命中时回退到 group 顶层的 `baseUrl` / `apiKey`。因此使用顶层字段时，中转站必须保证该入口对所选场景兼容。
 
 初始化页的 API 线路 URL 用于切换网络 origin，不会直接抹掉上述场景路径。客户端会把场景连接中的 path 迁移到所选线路：例如 Codex 的 `https://origin.example/v1` 配合线路 `https://cf.example` 会得到 `https://cf.example/v1`。如果服务端只返回纯 origin，OpenAI Chat / Responses 场景默认补 `/v1`，Anthropic / Gemini Native 场景保持纯 origin。服务端返回的自定义 path 始终优先，客户端不会把 `/api/coding` 等前缀替换成固定 `/v1`。
 

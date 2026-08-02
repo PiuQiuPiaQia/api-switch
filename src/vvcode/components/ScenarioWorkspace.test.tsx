@@ -267,6 +267,26 @@ describe("ScenarioWorkspace", () => {
     expect(apiMocks.getToolVersions).not.toHaveBeenCalled();
   });
 
+  it("opens Claude Desktop configuration without requiring a CLI environment", async () => {
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        scenarioId="claude-desktop"
+      />,
+    );
+
+    expect(await screen.findByText("独立配置")).toBeInTheDocument();
+    expect(screen.getByText("客户端配置")).toBeInTheDocument();
+    expect(
+      screen.getByText("配置后请重启 Claude Desktop。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "检测更新" })).toBeNull();
+    expect(apiMocks.getToolVersions).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(apiMocks.getProviders).toHaveBeenCalledWith("claude-desktop"),
+    );
+  });
+
   it.each(PRODUCT.scenarios)(
     "offers a native restore action for $name",
     async (scenario) => {

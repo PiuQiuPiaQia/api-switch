@@ -200,25 +200,29 @@ export function ManagedProviderCoreForm({
       <div className="vv-core-routes">
         <div className="vv-core-routes__heading">
           <span className="vv-core-routes__title">
-            <strong>模型配置</strong>
+            <strong>
+              {scenario.id === "claude-desktop" ? "客户端配置" : "模型配置"}
+            </strong>
             <small title={connection.baseUrl}>
               Base URL · {connection.baseUrl}
             </small>
           </span>
           <div className="vv-core-routes__actions">
-            <button
-              type="button"
-              onClick={handleFetchModels}
-              disabled={isFetchingModels || !hasApiKey}
-              className="vv-core-fetch-button"
-            >
-              {isFetchingModels ? (
-                <Loader2 className="vv-spin" size={14} />
-              ) : (
-                <Download size={14} />
-              )}
-              {isFetchingModels ? "正在获取" : "获取模型"}
-            </button>
+            {scenario.id !== "claude-desktop" && (
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={isFetchingModels || !hasApiKey}
+                className="vv-core-fetch-button"
+              >
+                {isFetchingModels ? (
+                  <Loader2 className="vv-spin" size={14} />
+                ) : (
+                  <Download size={14} />
+                )}
+                {isFetchingModels ? "正在获取" : "获取模型"}
+              </button>
+            )}
             {(scenario.id === "opencode" ||
               scenario.id === "openclaw" ||
               scenario.id === "hermes") && (
@@ -253,6 +257,12 @@ export function ManagedProviderCoreForm({
               </label>
             ))}
           </div>
+        )}
+
+        {scenario.id === "claude-desktop" && (
+          <p className="vv-core-model-order-hint">
+            配置后请重启 Claude Desktop。
+          </p>
         )}
 
         {(scenario.id === "codex" || scenario.id === "gemini") && (

@@ -109,17 +109,28 @@ describe("VvCodeApp tool environment checks", () => {
       screen.getByRole("button", { name: "OpenClaw（龙虾）" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hermes" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Claude Desktop" }),
+    ).toBeInTheDocument();
 
     await waitFor(() =>
       expect(mocks.getToolVersions).toHaveBeenCalledTimes(
-        PRODUCT.scenarios.length,
+        PRODUCT.scenarios.filter((scenario) => scenario.tool).length,
       ),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
     expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
-    expect(await screen.findByText("Codex CLI 工作区")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Desktop" }));
+    expect(
+      await screen.findByText("Claude Desktop 工作区"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Codex（桌面端 / CLI）" }),
+    );
+    expect(
+      await screen.findByText("Codex（桌面端 / CLI） 工作区"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "OpenClaw（龙虾）" }));
     expect(
       await screen.findByText("OpenClaw（龙虾） 工作区"),
@@ -129,7 +140,7 @@ describe("VvCodeApp tool environment checks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
 
     expect(mocks.getToolVersions).toHaveBeenCalledTimes(
-      PRODUCT.scenarios.length,
+      PRODUCT.scenarios.filter((scenario) => scenario.tool).length,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "仅检测更新" }));
@@ -139,8 +150,9 @@ describe("VvCodeApp tool environment checks", () => {
       }),
     );
     expect(mocks.getToolVersions).toHaveBeenCalledTimes(
-      PRODUCT.scenarios.length,
+      PRODUCT.scenarios.filter((scenario) => scenario.tool).length,
     );
+    expect(mocks.getToolVersions).not.toHaveBeenCalledWith([null]);
     expect(mocks.getToolVersions).not.toHaveBeenCalledWith(["opencode"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["openclaw"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["hermes"]);

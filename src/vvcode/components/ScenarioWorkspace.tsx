@@ -218,12 +218,13 @@ export function ScenarioWorkspace({
     loading: toolLoading,
     error: toolError,
   } = environment;
+  const hasToolEnvironment = scenario.tool !== null;
   const environmentReady =
-    Boolean(toolInfo?.version) && !toolInfo?.installed_but_broken;
-  const updateAvailable = isUpdateAvailable(
-    toolInfo?.version,
-    toolInfo?.latest_version,
-  );
+    !hasToolEnvironment ||
+    (Boolean(toolInfo?.version) && !toolInfo?.installed_but_broken);
+  const updateAvailable = hasToolEnvironment
+    ? isUpdateAvailable(toolInfo?.version, toolInfo?.latest_version)
+    : false;
 
   const checkForUpdates = useCallback(async () => {
     try {
@@ -253,6 +254,7 @@ export function ScenarioWorkspace({
 
   const runToolAction = useCallback(
     async (action: ToolLifecycleAction) => {
+      if (!scenario.tool) return;
       if (preview) {
         toast.info("当前为开发预览模式，不会修改本机环境");
         return;
@@ -552,37 +554,44 @@ export function ScenarioWorkspace({
       }
       accent={scenario.accent}
       actions={
-        <>
-          <span
-            className={`vv-scenario-version ${environmentReady ? "is-ready" : "is-missing"} ${toolError ? "is-error" : ""}`}
-            title={headerTitle}
-          >
-            <span>当前版本</span>
-            <strong>{currentVersion}</strong>
+        hasToolEnvironment ? (
+          <>
+            <span
+              className={`vv-scenario-version ${environmentReady ? "is-ready" : "is-missing"} ${toolError ? "is-error" : ""}`}
+              title={headerTitle}
+            >
+              <span>当前版本</span>
+              <strong>{currentVersion}</strong>
+            </span>
+            <button
+              type="button"
+              className={`vv-environment-button ${environmentReady ? "is-ready" : "is-missing"} ${updateAvailable ? "is-update" : ""} ${toolError ? "is-error" : ""}`}
+              disabled={headerBusy || !environmentReady}
+              title={headerTitle}
+              onClick={() => {
+                if (headerAction === "check") {
+                  void checkForUpdates();
+                } else {
+                  void runToolAction("update");
+                }
+              }}
+            >
+              {headerChecking ? (
+                <Loader2 className="vv-spin" size={15} />
+              ) : headerAction === "update" ? (
+                <ArrowUpCircle size={15} />
+              ) : (
+                <RefreshCw size={15} />
+              )}
+              <span>{headerLabel}</span>
+            </button>
+          </>
+        ) : (
+          <span className="vv-scenario-version is-ready" title="无需安装 CLI">
+            <span>客户端</span>
+            <strong>独立配置</strong>
           </span>
-          <button
-            type="button"
-            className={`vv-environment-button ${environmentReady ? "is-ready" : "is-missing"} ${updateAvailable ? "is-update" : ""} ${toolError ? "is-error" : ""}`}
-            disabled={headerBusy || !environmentReady}
-            title={headerTitle}
-            onClick={() => {
-              if (headerAction === "check") {
-                void checkForUpdates();
-              } else {
-                void runToolAction("update");
-              }
-            }}
-          >
-            {headerChecking ? (
-              <Loader2 className="vv-spin" size={15} />
-            ) : headerAction === "update" ? (
-              <ArrowUpCircle size={15} />
-            ) : (
-              <RefreshCw size={15} />
-            )}
-            <span>{headerLabel}</span>
-          </button>
-        </>
+        )
       }
     >
       {environmentReady ? (

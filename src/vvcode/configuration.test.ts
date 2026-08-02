@@ -74,6 +74,9 @@ describe("managed provider configuration", () => {
       baseUrl: group.baseUrl,
       apiKey: group.apiKey,
     });
+    expect(resolveGroupConnection(scenario("claude-desktop"), group)).toEqual(
+      group.connections?.claude,
+    );
   });
 
   it("overrides every scenario with the selected global Base URL", () => {
@@ -108,6 +111,20 @@ describe("managed provider configuration", () => {
       ANTHROPIC_AUTH_TOKEN: "sk-claude",
     });
     expect(provider.settingsConfig.env).not.toHaveProperty("ANTHROPIC_MODEL");
+  });
+
+  it("builds an independent Claude Desktop direct profile", () => {
+    const provider = buildManagedProvider(scenario("claude-desktop"), group);
+
+    expect(provider.settingsConfig.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "https://claude.example",
+      ANTHROPIC_AUTH_TOKEN: "sk-claude",
+    });
+    expect(provider.meta).toMatchObject({
+      claudeDesktopMode: "direct",
+      apiFormat: "anthropic",
+      claudeDesktopModelRoutes: {},
+    });
   });
 
   it("builds Codex auth and custom provider TOML without forcing a model", () => {

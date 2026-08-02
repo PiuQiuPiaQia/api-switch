@@ -40,7 +40,11 @@ function createInitialToolEnvironments(): Record<
 > {
   return PRODUCT.scenarios.reduce(
     (states, scenario) => {
-      states[scenario.id] = { info: null, loading: true, error: null };
+      states[scenario.id] = {
+        info: null,
+        loading: scenario.tool !== null,
+        error: null,
+      };
       return states;
     },
     {} as Record<ScenarioId, ToolEnvironmentState>,
@@ -96,6 +100,23 @@ export default function VvCodeApp() {
       const scenario = PRODUCT.scenarios.find((item) => item.id === scenarioId);
       if (!scenario) throw new Error("未找到对应的工具配置");
 
+      if (!scenario.tool) {
+        const info: ToolVersionInfo = {
+          name: scenario.name,
+          version: null,
+          latest_version: null,
+          error: null,
+          installed_but_broken: false,
+          env_type: "unknown",
+          wsl_distro: null,
+        };
+        setToolEnvironments((current) => ({
+          ...current,
+          [scenarioId]: { info, loading: false, error: null },
+        }));
+        return info;
+      }
+
       setToolEnvironments((current) => ({
         ...current,
         [scenarioId]: {
@@ -137,7 +158,7 @@ export default function VvCodeApp() {
       const scenario = PRODUCT.scenarios.find((item) => item.id === scenarioId);
       const currentInfo = toolEnvironments[scenarioId].info;
       if (
-        !scenario ||
+        !scenario?.tool ||
         !currentInfo?.version ||
         currentInfo.installed_but_broken
       ) {

@@ -14,6 +14,7 @@ const MANAGED_PROVIDER_ID: &str = "vv-code-managed";
 fn official_seed_id(app_type: &AppType) -> Option<&'static str> {
     match app_type {
         AppType::Claude => Some(crate::database::CLAUDE_OFFICIAL_PROVIDER_ID),
+        AppType::ClaudeDesktop => Some(crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID),
         AppType::Codex => Some(crate::database::CODEX_OFFICIAL_PROVIDER_ID),
         AppType::Gemini => Some(crate::database::GEMINI_OFFICIAL_PROVIDER_ID),
         _ => None,
@@ -166,6 +167,18 @@ pub async fn restore_official_configuration(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn claude_desktop_uses_its_independent_official_seed() {
+        assert_eq!(
+            official_seed_id(&AppType::ClaudeDesktop),
+            Some(crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID)
+        );
+        assert_ne!(
+            official_seed_id(&AppType::ClaudeDesktop),
+            official_seed_id(&AppType::Claude)
+        );
+    }
 
     #[test]
     fn openclaw_cleanup_promotes_non_managed_fallback_and_prunes_catalog() {

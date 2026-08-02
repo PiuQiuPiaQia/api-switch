@@ -158,6 +158,31 @@ export function buildManagedProvider(
       };
     }
 
+    case "claude-desktop": {
+      const previousSettings = asRecord(previous?.settingsConfig);
+      const env = { ...asRecord(previousSettings.env) };
+      delete env.ANTHROPIC_API_KEY;
+      delete env.ANTHROPIC_AUTH_TOKEN;
+      env.ANTHROPIC_BASE_URL = connection.baseUrl;
+      env.ANTHROPIC_AUTH_TOKEN = connection.apiKey;
+
+      return {
+        ...common,
+        settingsConfig: {
+          ...previousSettings,
+          env,
+        },
+        meta: {
+          ...common.meta,
+          endpointAutoSelect: undefined,
+          apiFormat: "anthropic",
+          apiKeyField: "ANTHROPIC_AUTH_TOKEN",
+          claudeDesktopMode: "direct",
+          claudeDesktopModelRoutes: {},
+        },
+      };
+    }
+
     case "codex": {
       const previousSettings = asRecord(previous?.settingsConfig);
       const previousConfig =
