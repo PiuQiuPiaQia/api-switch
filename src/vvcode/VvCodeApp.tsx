@@ -44,7 +44,6 @@ function createInitialToolEnvironments(): Record<
     (states, scenario) => {
       states[scenario.id] = {
         info: null,
-        installationReport: null,
         loading: scenario.tool !== null,
         error: null,
       };
@@ -117,12 +116,11 @@ export default function VvCodeApp() {
           ...current,
           [scenarioId]: {
             info,
-            installationReport: null,
             loading: false,
             error: null,
           },
         }));
-        return { info, installationReport: null };
+        return { info };
       }
 
       setToolEnvironments((current) => ({
@@ -135,27 +133,21 @@ export default function VvCodeApp() {
       }));
 
       try {
-        const [versions, reports] = await withToolCheckTimeout(
-          Promise.all([
-            settingsApi.getToolVersions([scenario.tool]),
-            settingsApi.probeToolInstallations([scenario.tool]),
-          ]),
+        const versions = await withToolCheckTimeout(
+          settingsApi.getToolVersions([scenario.tool]),
         );
         const [result] = versions;
-        const [installationReport] = reports;
         if (!result) throw new Error("未获得更新检测结果");
-        if (!installationReport) throw new Error("未获得工具安装分布");
         const info = result as ToolVersionInfo;
         setToolEnvironments((current) => ({
           ...current,
           [scenarioId]: {
             info,
-            installationReport,
             loading: false,
             error: null,
           },
         }));
-        return { info, installationReport };
+        return { info };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setToolEnvironments((current) => ({

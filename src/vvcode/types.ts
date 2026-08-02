@@ -1,5 +1,4 @@
 import type { AppId } from "@/lib/api";
-import type { ToolInstallationReport } from "@/lib/api/settings";
 
 export type ScenarioId =
   | "claude"
@@ -24,6 +23,10 @@ export interface ProductScenario {
   name: string;
   shortName: string;
   description: string;
+  desktopDownload?: {
+    label: string;
+    url: string;
+  };
   accent: string;
   icon: "claude" | "openai" | "gemini" | "opencode" | "openclaw" | "hermes";
 }
@@ -120,12 +123,8 @@ export interface ToolVersionInfo {
 
 export interface ToolEnvironmentState {
   info: ToolVersionInfo | null;
-  installationReport: ToolInstallationReport | null;
   loading: boolean;
   error: string | null;
 }
 
-export type ToolEnvironmentSnapshot = Pick<
-  ToolEnvironmentState,
-  "info" | "installationReport"
->;
+export type ToolEnvironmentSnapshot = Pick<ToolEnvironmentState, "info">;

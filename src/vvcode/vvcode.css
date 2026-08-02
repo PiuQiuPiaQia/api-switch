@@ -825,6 +825,33 @@ body:has(.vv-app-loading) {
   color: #9294a2;
 }
 
+.vv-desktop-download {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--scenario-accent) 22%, #e2e4ea);
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--scenario-accent) 82%, #28302e);
+  background: color-mix(in srgb, var(--scenario-accent) 5%, #fff);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: 150ms ease;
+}
+
+.vv-desktop-download:hover {
+  border-color: color-mix(in srgb, var(--scenario-accent) 40%, #d9dce3);
+  background: color-mix(in srgb, var(--scenario-accent) 9%, #fff);
+  transform: translateY(-1px);
+}
+
+.vv-desktop-download svg {
+  flex: none;
+}
+
 /* Chat */
 
 .vv-chat-page {

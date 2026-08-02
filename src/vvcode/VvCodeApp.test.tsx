@@ -93,27 +93,6 @@ describe("VvCodeApp tool environment checks", () => {
     mocks.getToolVersions.mockImplementation(async ([tool]: string[]) => [
       toolInfo(tool),
     ]);
-    mocks.probeToolInstallations.mockImplementation(
-      async ([tool]: string[]) => [
-        {
-          tool,
-          installs: [
-            {
-              path: `/Users/tester/.local/bin/${tool}`,
-              version: "1.0.0",
-              runnable: true,
-              error: null,
-              source: "system",
-              is_path_default: true,
-            },
-          ],
-          is_conflict: false,
-          needs_confirmation: false,
-          command: `${tool} update`,
-          anchored: true,
-        },
-      ],
-    );
   });
 
   it("checks every tool once on first entry and reuses the results while navigating", async () => {
@@ -142,9 +121,7 @@ describe("VvCodeApp tool environment checks", () => {
         PRODUCT.scenarios.filter((scenario) => scenario.tool).length,
       ),
     );
-    expect(mocks.probeToolInstallations).toHaveBeenCalledTimes(
-      PRODUCT.scenarios.filter((scenario) => scenario.tool).length,
-    );
+    expect(mocks.probeToolInstallations).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
     expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
@@ -183,9 +160,6 @@ describe("VvCodeApp tool environment checks", () => {
     expect(mocks.getToolVersions).not.toHaveBeenCalledWith(["opencode"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["openclaw"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["hermes"]);
-    expect(mocks.probeToolInstallations).not.toHaveBeenCalledWith([null]);
-    expect(mocks.probeToolInstallations).not.toHaveBeenCalledWith(["opencode"]);
-    expect(mocks.probeToolInstallations).toHaveBeenCalledWith(["openclaw"]);
-    expect(mocks.probeToolInstallations).toHaveBeenCalledWith(["hermes"]);
+    expect(mocks.probeToolInstallations).not.toHaveBeenCalled();
   });
 });
