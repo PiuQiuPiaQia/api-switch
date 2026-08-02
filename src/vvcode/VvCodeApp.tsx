@@ -1,17 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  ChevronRight,
-  Cloud,
-  Gauge,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Cloud, Gauge, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { settingsApi } from "@/lib/api/settings";
@@ -40,7 +28,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { InitializationPanel } from "./components/InitializationPanel";
 import { ScenarioWorkspace } from "./components/ScenarioWorkspace";
 import { AccountPage } from "./components/AccountPage";
-import "./product.css";
+import "./vvcode.css";
 
 type ActivePage = ProductScenario["id"] | "initialize" | "account";
 
@@ -86,7 +74,7 @@ function AppLoading() {
   );
 }
 
-export default function ProductApp() {
+export default function VvCodeApp() {
   const [booting, setBooting] = useState(true);
   const [session, setSession] = useState<NewApiSession | null>(null);
   const [bootstrap, setBootstrap] = useState<NewApiBootstrap | null>(null);

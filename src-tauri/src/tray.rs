@@ -96,6 +96,15 @@ fn detect_system_tray_language() -> &'static str {
         .unwrap_or("zh")
 }
 
+pub(crate) fn current_tray_texts() -> TrayTexts {
+    let settings = crate::settings::get_settings();
+    let language = match settings.language.as_deref() {
+        Some(language) => language,
+        None => detect_system_tray_language(),
+    };
+    TrayTexts::from_language(language)
+}
+
 impl TrayTexts {
     pub fn from_language(language: &str) -> Self {
         match language {
@@ -154,7 +163,7 @@ pub struct TrayAppSection {
 
 /// Auto 菜单项后缀
 pub const AUTO_SUFFIX: &str = "auto";
-pub const TRAY_ID: &str = "vv-code";
+pub const TRAY_ID: &str = "cc-switch";
 
 pub const TRAY_SECTIONS: [TrayAppSection; 4] = [
     TrayAppSection {
@@ -636,38 +645,8 @@ fn handle_provider_click(
     Ok(())
 }
 
-/// VV Code 单供应商发行版托盘：只保留窗口与退出入口。
-///
-/// 供应商、代理、项目与应用切换均由产品界面管理，避免从托盘重新暴露
-/// 上游 CC Switch 的多供应商控制面。
+/// 创建动态托盘菜单
 pub fn create_tray_menu(
-    app: &tauri::AppHandle,
-    _app_state: &AppState,
-) -> Result<Menu<tauri::Wry>, AppError> {
-    let app_settings = crate::settings::get_settings();
-    let language: &str = match app_settings.language.as_deref() {
-        Some(language) => language,
-        None => detect_system_tray_language(),
-    };
-    let tray_texts = TrayTexts::from_language(language);
-
-    let show_main_item =
-        MenuItem::with_id(app, "show_main", tray_texts.show_main, true, None::<&str>)
-            .map_err(|e| AppError::Message(format!("创建打开主界面菜单失败: {e}")))?;
-    let quit_item = MenuItem::with_id(app, "quit", tray_texts.quit, true, None::<&str>)
-        .map_err(|e| AppError::Message(format!("创建退出菜单失败: {e}")))?;
-
-    MenuBuilder::new(app)
-        .item(&show_main_item)
-        .separator()
-        .item(&quit_item)
-        .build()
-        .map_err(|e| AppError::Message(format!("构建菜单失败: {e}")))
-}
-
-/// 上游多供应商托盘实现保留为迁移参考，但单供应商发行版不调用。
-#[allow(dead_code)]
-fn create_legacy_tray_menu(
     app: &tauri::AppHandle,
     app_state: &AppState,
 ) -> Result<Menu<tauri::Wry>, AppError> {
@@ -1000,7 +979,7 @@ pub fn handle_tray_menu_event(app: &tauri::AppHandle, event_id: &str) {
             }
         }
         "open_website" => {
-            if let Err(e) = app.opener().open_url("https://vvcode.top", None::<String>) {
+            if let Err(e) = app.opener().open_url("https://ccswitch.io", None::<String>) {
                 log::error!("打开官方网站失败: {e}");
             }
         }
@@ -1166,7 +1145,7 @@ mod tests {
 
     #[test]
     fn tray_id_is_unique_to_app() {
-        assert_eq!(TRAY_ID, "vv-code");
+        assert_eq!(TRAY_ID, "cc-switch");
         assert_ne!(TRAY_ID, "main");
     }
 

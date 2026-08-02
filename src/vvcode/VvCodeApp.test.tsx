@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRODUCT } from "./config";
 import type { ToolVersionInfo } from "./types";
-import ProductApp from "./ProductApp";
+import VvCodeApp from "./VvCodeApp";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -77,7 +77,7 @@ function toolInfo(name: string): ToolVersionInfo {
   };
 }
 
-describe("ProductApp tool environment checks", () => {
+describe("VvCodeApp tool environment checks", () => {
   beforeEach(() => {
     mocks.getSession.mockReset();
     mocks.getSession.mockResolvedValue(null);
@@ -93,7 +93,7 @@ describe("ProductApp tool environment checks", () => {
   });
 
   it("checks every tool once on first entry and reuses the results while navigating", async () => {
-    render(<ProductApp />);
+    render(<VvCodeApp />);
 
     fireEvent.click(await screen.findByRole("button", { name: "进入预览" }));
 

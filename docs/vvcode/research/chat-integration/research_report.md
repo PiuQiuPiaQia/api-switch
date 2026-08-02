@@ -8,15 +8,15 @@ iframe 当前虽然没有被目标站点的 `X-Frame-Options` 或 `frame-ancesto
 
 ## 关键依据
 
-| 维度 | 本地聊天组件 | 网站 iframe |
-| --- | --- | --- |
-| 登录复用 | 直接使用 bootstrap 已提供的分组推理 Key | 网站需要独立 dashboard Session；桌面 OAuth PAT 不能登录 Playground |
-| 流式接口 | 标准 `/v1/chat/completions`，线上已允许跨域 Bearer 请求 | `/pg/chat/completions` 需要短期 Session JWT，后端明确拒绝 PAT |
-| Cookie | 不依赖 Cookie | Refresh Cookie 为 `HttpOnly; SameSite=Strict`，跨站 iframe 不能可靠冷启动或续期 |
-| UI 一致性 | 可完全贴合当前 VV Code 左侧工作台 | 会嵌入网站顶部栏、侧栏和网站主题，除非另做 embed 模式 |
-| 安全边界 | 只加载本地打包代码和远程数据，符合现有模型 | 在高权限 Tauri 主 WebView 中引入远程可执行内容，需要重新审计 IPC/capabilities |
-| 离线/故障表现 | 可由桌面端控制重试、错误和降级 | 受网站发布、登录、Cookie、CSP 和 WebView 平台差异共同影响 |
-| 初期代码量 | 中等，需要 SSE 适配和 UI 接线 | 表面很小，但生产可用还需要 SSO、Cookie/嵌入策略和安全隔离 |
+| 维度          | 本地聊天组件                                            | 网站 iframe                                                                     |
+| ------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 登录复用      | 直接使用 bootstrap 已提供的分组推理 Key                 | 网站需要独立 dashboard Session；桌面 OAuth PAT 不能登录 Playground              |
+| 流式接口      | 标准 `/v1/chat/completions`，线上已允许跨域 Bearer 请求 | `/pg/chat/completions` 需要短期 Session JWT，后端明确拒绝 PAT                   |
+| Cookie        | 不依赖 Cookie                                           | Refresh Cookie 为 `HttpOnly; SameSite=Strict`，跨站 iframe 不能可靠冷启动或续期 |
+| UI 一致性     | 可完全贴合当前 VV Code 左侧工作台                       | 会嵌入网站顶部栏、侧栏和网站主题，除非另做 embed 模式                           |
+| 安全边界      | 只加载本地打包代码和远程数据，符合现有模型              | 在高权限 Tauri 主 WebView 中引入远程可执行内容，需要重新审计 IPC/capabilities   |
+| 离线/故障表现 | 可由桌面端控制重试、错误和降级                          | 受网站发布、登录、Cookie、CSP 和 WebView 平台差异共同影响                       |
+| 初期代码量    | 中等，需要 SSE 适配和 UI 接线                           | 表面很小，但生产可用还需要 SSO、Cookie/嵌入策略和安全隔离                       |
 
 ## 路由纠正
 
@@ -39,7 +39,7 @@ iframe 当前虽然没有被目标站点的 `X-Frame-Options` 或 `frame-ancesto
 
 ## 最小实现路径
 
-1. 在 `ProductApp` 的 `ActivePage` 和“工作台”导航中增加 `chat`。
+1. 在 `VvCodeApp` 的 `ActivePage` 和“工作台”导航中增加 `chat`。
 2. 新建 `ChatPage`，复用 `bootstrap.groups`、默认分组与 `ensureGroupTokens`。
 3. 使用分组 `baseUrl` + `apiKey` 请求标准 Chat Completions；Key 不写 URL、日志或对话持久化。
 4. 自定义 `ChatModelAdapter.run` 解析 OpenAI SSE，支持 `AbortController`，按 assistant-ui 要求 yield 累计消息状态。

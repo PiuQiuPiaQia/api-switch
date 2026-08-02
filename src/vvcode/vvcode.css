@@ -1369,7 +1369,8 @@ body:has(.vv-app-loading) {
   background: #fff7f7;
 }
 
-.vv-chat-message__actions .vv-chat-message__retry.is-error:hover:not(:disabled) {
+.vv-chat-message__actions
+  .vv-chat-message__retry.is-error:hover:not(:disabled) {
   color: #79343a;
   background: #fdecee;
 }

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  resolveChatApiBaseUrl,
-  shouldShowMessageLoading,
-} from "./ChatRuntime";
+import { resolveChatApiBaseUrl, shouldShowMessageLoading } from "./ChatRuntime";
 
 describe("resolveChatApiBaseUrl", () => {
   it("adds the NewAPI v1 prefix when a group exposes the server root", () => {

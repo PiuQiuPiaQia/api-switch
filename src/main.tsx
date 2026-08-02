@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import ProductApp from "./product/ProductApp";
-import { DatabaseUpgrade } from "./components/DatabaseUpgrade";
+import VvCodeApp from "./vvcode/VvCodeApp";
+import { DatabaseUpgrade } from "./vvcode/components/DatabaseUpgrade";
 import "./index.css";
 // 导入国际化配置
 import i18n from "./i18n";
@@ -114,7 +114,7 @@ async function bootstrap() {
       <FrontendErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider defaultTheme="light" storageKey="vv-code-theme">
-            <ProductApp />
+            <VvCodeApp />
             <Toaster />
           </ThemeProvider>
         </QueryClientProvider>

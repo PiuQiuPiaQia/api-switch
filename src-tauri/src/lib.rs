@@ -33,6 +33,7 @@ mod services;
 mod session_manager;
 mod settings;
 mod store;
+mod vvcode;
 
 mod tray;
 mod usage_events;
@@ -76,10 +77,6 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri::RunEvent;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
-
-/// 该分支是 VV Code 单供应商发行版。保留上游模块用于复用成熟的环境检测与
-/// 配置写入实现，但不执行多供应商导入、会话扫描或同步后台任务。
-const SINGLE_PROVIDER_EDITION: bool = true;
 
 #[cfg(target_os = "windows")]
 fn set_windows_app_user_model_id(app: &tauri::AppHandle) {
@@ -512,7 +509,7 @@ pub fn run() {
             // ============================================================
 
             // 1. 初始化默认 Skills 仓库（已有内置检查：表非空则跳过）
-            match if SINGLE_PROVIDER_EDITION {
+            match if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 Ok(0)
             } else {
                 app_state.db.init_default_skill_repos()
@@ -528,7 +525,8 @@ pub fn run() {
             // 触发条件由 schema 迁移设置 settings.skills_ssot_migration_pending = true 控制。
             match app_state.db.get_setting("skills_ssot_migration_pending") {
                 Ok(Some(flag))
-                    if !SINGLE_PROVIDER_EDITION && (flag == "true" || flag == "1") =>
+                    if vvcode::edition::UPSTREAM_FEATURES_ENABLED
+                        && (flag == "true" || flag == "1") =>
                 {
                     // 安全保护：如果用户已经有 v3 结构的 Skills 数据，就不要自动清空重建。
                     let has_existing = app_state
@@ -584,7 +582,7 @@ pub fn run() {
             for app_type in
                 crate::app_config::AppType::all().filter(|t| !t.is_additive_mode())
             {
-                if SINGLE_PROVIDER_EDITION {
+                if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                     break;
                 }
                 if !crate::services::provider::should_import_default_config_on_startup(
@@ -619,7 +617,7 @@ pub fn run() {
                 }
             }
 
-            match if SINGLE_PROVIDER_EDITION {
+            match if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 Ok(0)
             } else {
                 app_state.db.init_default_official_providers()
@@ -634,7 +632,7 @@ pub fn run() {
             {
                 let db_for_codex_history_migration = app_state.db.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    if SINGLE_PROVIDER_EDITION {
+                    if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                         return;
                     }
                     match crate::codex_history_migration::maybe_migrate_codex_third_party_history_provider_bucket(
@@ -698,7 +696,7 @@ pub fn run() {
 
             // 老用户 / 已确认的路径由 `fresh_install_at_startup` 自行拦截，这里不做写入。
             // 字段只由前端在用户点击"我知道了"时 save_settings 回写，语义是"用户显式确认过"。
-            if !SINGLE_PROVIDER_EDITION
+            if vvcode::edition::UPSTREAM_FEATURES_ENABLED
                 && !first_run_already_confirmed
                 && fresh_install_at_startup
             {
@@ -715,7 +713,7 @@ pub fn run() {
             //
             // 底层 read_*_config 在文件不存在时返回默认空配置，因此新装且无
             // live 文件的用户走 Ok(0) 路径，不会产生错误日志噪音。
-            match if SINGLE_PROVIDER_EDITION {
+            match if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 Ok(0)
             } else {
                 crate::services::provider::import_opencode_providers_from_live(&app_state)
@@ -726,7 +724,7 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No OpenCode provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import OpenCode providers: {e}"),
             }
-            match if SINGLE_PROVIDER_EDITION {
+            match if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 Ok(0)
             } else {
                 crate::services::provider::import_openclaw_providers_from_live(&app_state)
@@ -737,7 +735,7 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No OpenClaw provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import OpenClaw providers: {e}"),
             }
-            match if SINGLE_PROVIDER_EDITION {
+            match if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 Ok(0)
             } else {
                 crate::services::provider::import_hermes_providers_from_live(&app_state)
@@ -756,7 +754,7 @@ pub fn run() {
                     .get_all_providers("opencode")
                     .map(|providers| providers.values().any(|p| p.category.as_deref() == Some("omo")))
                     .unwrap_or(false);
-                if !SINGLE_PROVIDER_EDITION && !has_omo {
+                if vvcode::edition::UPSTREAM_FEATURES_ENABLED && !has_omo {
                     match crate::services::OmoService::import_from_local(&app_state, &crate::services::omo::STANDARD) {
                         Ok(provider) => {
                             log::info!("✓ Imported OMO config from local as provider '{}'", provider.name);
@@ -782,7 +780,7 @@ pub fn run() {
                             .any(|p| p.category.as_deref() == Some("omo-slim"))
                     })
                     .unwrap_or(false);
-                if !SINGLE_PROVIDER_EDITION && !has_omo_slim {
+                if vvcode::edition::UPSTREAM_FEATURES_ENABLED && !has_omo_slim {
                     match crate::services::OmoService::import_from_local(&app_state, &crate::services::omo::SLIM) {
                         Ok(provider) => {
                             log::info!(
@@ -801,7 +799,7 @@ pub fn run() {
             }
 
             // 3. 导入 MCP 服务器配置（表空时触发）
-            if !SINGLE_PROVIDER_EDITION
+            if vvcode::edition::UPSTREAM_FEATURES_ENABLED
                 && app_state.db.is_mcp_table_empty().unwrap_or(false)
             {
                 log::info!("MCP table empty, importing from live configurations...");
@@ -856,7 +854,7 @@ pub fn run() {
             }
 
             // 4. 导入提示词文件（表空时触发）
-            if !SINGLE_PROVIDER_EDITION
+            if vvcode::edition::UPSTREAM_FEATURES_ENABLED
                 && app_state.db.is_prompts_table_empty().unwrap_or(false)
             {
                 log::info!("Prompts table empty, importing from live configurations...");
@@ -884,7 +882,7 @@ pub fn run() {
             }
 
             // 迁移旧的 app_config_dir 配置到 Store
-            if !SINGLE_PROVIDER_EDITION {
+            if vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 if let Err(e) = app_store::migrate_app_config_dir_from_settings(app.handle()) {
                     log::warn!("迁移 app_config_dir 失败: {e}");
                 }
@@ -893,10 +891,10 @@ pub fn run() {
             // 启动阶段不再无条件保存,避免意外覆盖用户配置。
 
             // 创建动态托盘菜单
-            let menu = tray::create_tray_menu(app.handle(), &app_state)?;
+            let menu = vvcode::tray::create_tray_menu(app.handle())?;
 
             // 构建托盘
-            let mut tray_builder = TrayIconBuilder::with_id(tray::TRAY_ID)
+            let mut tray_builder = TrayIconBuilder::with_id(vvcode::tray::TRAY_ID)
                 .tooltip("VV Code") // 鼠标悬停提示
                 .on_tray_icon_event(|tray, event| match event {
                     // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
@@ -939,7 +937,7 @@ pub fn run() {
             }
 
             let _tray = tray_builder.build(app)?;
-            if !SINGLE_PROVIDER_EDITION {
+            if vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                 crate::services::webdav_auto_sync::start_worker(
                     app_state.db.clone(),
                     app.handle().clone(),
@@ -988,7 +986,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let state = app_handle.state::<AppState>();
 
-                if SINGLE_PROVIDER_EDITION {
+                if !vvcode::edition::UPSTREAM_FEATURES_ENABLED {
                     log::debug!("单供应商发行版：已跳过上游代理恢复与会话扫描任务");
                     return;
                 }
@@ -1150,7 +1148,7 @@ pub fn run() {
             commands::add_provider,
             commands::update_provider,
             commands::switch_provider,
-            commands::restore_official_configuration,
+            vvcode::restore_official_configuration,
             commands::get_init_error,
             commands::open_app_config_folder,
             commands::set_window_theme,
@@ -1160,13 +1158,13 @@ pub fn run() {
             commands::probe_tool_installations,
             commands::fetch_models_for_config,
             commands::test_api_endpoints,
-            commands::newapi_oauth_begin,
-            commands::newapi_get_session,
-            commands::newapi_logout,
-            commands::newapi_get_bootstrap,
-            commands::newapi_get_api_info_routes,
-            commands::newapi_get_group_models,
-            commands::newapi_ensure_group_tokens,
+            vvcode::newapi_oauth_begin,
+            vvcode::newapi_get_session,
+            vvcode::newapi_logout,
+            vvcode::newapi_get_bootstrap,
+            vvcode::newapi_get_api_info_routes,
+            vvcode::newapi_get_group_models,
+            vvcode::newapi_ensure_group_tokens,
         ]);
 
     let app = builder
@@ -1320,7 +1318,7 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
 /// 在进程结束前干净地把图标摘掉。其它平台 `set_visible(false)` 也是
 /// 正常的隐藏/移除语义，作为跨平台兜底也安全。
 pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
-    if let Some(tray) = app_handle.tray_by_id(tray::TRAY_ID) {
+    if let Some(tray) = app_handle.tray_by_id(vvcode::tray::TRAY_ID) {
         if let Err(e) = tray.set_visible(false) {
             log::warn!("退出时移除托盘图标失败: {e}");
         } else {

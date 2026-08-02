@@ -9,7 +9,6 @@ beta-artifacts/
 *.tsbuildinfo
 .npmrc
 CLAUDE.md
-AGENTS.md
 GEMINI.md
 /.claude
 /.codex
