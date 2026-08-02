@@ -374,20 +374,20 @@ export function ScenarioWorkspace({
   );
   const keyPreparationIsCurrent =
     keyPreparation.groupId === (selectedGroup?.id ?? "");
+  const hasPreparedCredential = Boolean(selectedConnection?.apiKey.trim());
   const keyProvisioning = Boolean(
     selectedGroup &&
       !preview &&
+      !hasPreparedCredential &&
       (!keyPreparationIsCurrent || keyPreparation.phase === "checking"),
   );
   const keyProvisionError =
-    keyPreparationIsCurrent && keyPreparation.phase === "error"
+    !hasPreparedCredential &&
+    keyPreparationIsCurrent &&
+    keyPreparation.phase === "error"
       ? keyPreparation.error
       : null;
-  const keyReady = Boolean(
-    selectedConnection?.apiKey &&
-      (preview ||
-        (keyPreparationIsCurrent && keyPreparation.phase === "ready")),
-  );
+  const keyReady = hasPreparedCredential;
   const managedProvider = useMemo(
     () =>
       selectedGroup
@@ -643,33 +643,37 @@ export function ScenarioWorkspace({
             ) : (
               <div className="vv-empty-result">暂无可用分组</div>
             )}
+            {selectedGroup && (
+              <div
+                className={`vv-credential-status ${keyProvisionError ? "is-error" : keyProvisioning ? "is-loading" : "is-ready"}`}
+                aria-live="polite"
+              >
+                {keyProvisioning ? (
+                  <Loader2 className="vv-spin" size={14} />
+                ) : keyProvisionError ? (
+                  <AlertTriangle size={14} />
+                ) : (
+                  <Check size={14} />
+                )}
+                <span>
+                  {keyProvisioning
+                    ? "正在准备访问凭据…"
+                    : keyProvisionError
+                      ? keyProvisionError
+                      : "访问凭据已就绪"}
+                </span>
+                {keyProvisionError && (
+                  <button
+                    type="button"
+                    className="vv-credential-status__retry"
+                    onClick={() => setKeyRetryNonce((current) => current + 1)}
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-
-          {selectedGroup && (keyProvisioning || keyProvisionError) && (
-            <div
-              className={`vv-credential-status ${keyProvisionError ? "is-error" : "is-loading"}`}
-            >
-              {keyProvisioning ? (
-                <Loader2 className="vv-spin" size={14} />
-              ) : (
-                <AlertTriangle size={14} />
-              )}
-              <span>
-                {keyProvisioning
-                  ? "正在准备访问凭据…"
-                  : (keyProvisionError ?? "访问凭据准备失败")}
-              </span>
-              {keyProvisionError && (
-                <button
-                  type="button"
-                  className="vv-credential-status__retry"
-                  onClick={() => setKeyRetryNonce((current) => current + 1)}
-                >
-                  重试
-                </button>
-              )}
-            </div>
-          )}
 
           {selectedGroup && managedProvider && (
             <section className="vv-provider-editor">

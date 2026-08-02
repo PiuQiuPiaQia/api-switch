@@ -1185,6 +1185,7 @@ body:has(.vv-app-loading) {
 }
 
 .vv-chat-message__body {
+  position: relative;
   display: grid;
   min-width: 0;
   max-width: calc(100% - 44px);
@@ -1214,6 +1215,18 @@ body:has(.vv-app-loading) {
   min-height: 22px;
   align-items: center;
   gap: 2px;
+}
+
+.vv-chat-message__actions[data-floating="true"] {
+  position: absolute;
+  z-index: 3;
+  top: 100%;
+  left: 0;
+}
+
+.vv-chat-message--user .vv-chat-message__actions[data-floating="true"] {
+  right: 0;
+  left: auto;
 }
 
 .vv-chat-message__actions button {
@@ -3203,15 +3216,29 @@ body:has(.vv-app-loading) {
 
 .vv-credential-status {
   display: flex;
+  min-width: 0;
+  min-height: 38px;
+  flex: 1;
   align-items: center;
+  justify-content: flex-end;
   gap: 7px;
-  margin: 10px 0 0 56px;
+  margin-left: auto;
   color: #6658dc;
   font-size: 9px;
 }
 
 .vv-credential-status svg {
   flex: none;
+}
+
+.vv-credential-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vv-credential-status.is-ready {
+  color: #37805f;
 }
 
 .vv-credential-status.is-error {

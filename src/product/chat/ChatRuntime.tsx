@@ -248,6 +248,7 @@ function UserMessage() {
         <ActionBarPrimitive.Root
           className="vv-chat-message__actions"
           autohide="not-last"
+          autohideFloat="always"
         >
           <ActionBarPrimitive.Copy title="复制消息" aria-label="复制消息">
             <Copy size={13} />
@@ -276,6 +277,7 @@ function AssistantMessage() {
           className="vv-chat-message__actions"
           hideWhenRunning
           autohide="not-last"
+          autohideFloat="always"
         >
           <ActionBarPrimitive.Copy title="复制消息" aria-label="复制消息">
             <Copy size={13} />
@@ -393,8 +395,22 @@ function ChatThread() {
   );
 }
 
-function normalizedBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "");
+export function resolveChatApiBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, "");
+  if (!normalized) return "";
+
+  try {
+    const url = new URL(normalized);
+    const path = url.pathname.replace(/\/+$/, "");
+    if (!/\/v1$/i.test(path)) {
+      url.pathname = `${path}/v1`;
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`;
+  }
 }
 
 export function ChatRuntime({
@@ -407,7 +423,7 @@ export function ChatRuntime({
   const transport = useMemo(() => {
     const provider = createOpenAICompatible({
       name: "vv-code",
-      baseURL: normalizedBaseUrl(group.baseUrl),
+      baseURL: resolveChatApiBaseUrl(group.baseUrl),
       apiKey: group.apiKey,
       includeUsage: true,
     });

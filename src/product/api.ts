@@ -27,6 +27,10 @@ export const newApiApi = {
     return await invoke("newapi_get_api_info_routes");
   },
 
+  async getGroupModels(groupId: string): Promise<string[]> {
+    return await invoke("newapi_get_group_models", { groupId });
+  },
+
   async ensureGroupTokens(groupId: string): Promise<NewApiBootstrap> {
     return await invoke("newapi_ensure_group_tokens", { groupId });
   },

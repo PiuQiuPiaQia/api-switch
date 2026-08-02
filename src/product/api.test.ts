@@ -31,6 +31,16 @@ describe("newApiApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("newapi_get_api_info_routes");
   });
 
+  it("loads the models enabled for the selected website group", async () => {
+    const models = ["model-a", "model-b"];
+    invokeMock.mockResolvedValue(models);
+
+    await expect(newApiApi.getGroupModels("daily")).resolves.toBe(models);
+    expect(invokeMock).toHaveBeenCalledWith("newapi_get_group_models", {
+      groupId: "daily",
+    });
+  });
+
   it("reuses the endpoint speed-test command for API network checks", async () => {
     const results = [
       { url: "https://api.example/v1", latency: 92, status: 200 },

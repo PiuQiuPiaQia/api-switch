@@ -1164,6 +1164,7 @@ pub fn run() {
             commands::newapi_logout,
             commands::newapi_get_bootstrap,
             commands::newapi_get_api_info_routes,
+            commands::newapi_get_group_models,
             commands::newapi_ensure_group_tokens,
         ]);
 

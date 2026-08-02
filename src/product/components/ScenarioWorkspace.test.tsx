@@ -147,6 +147,9 @@ describe("ScenarioWorkspace", () => {
   it("reuses a credential already present in bootstrap", async () => {
     render(<AutoProvisionHarness initialBootstrap={bootstrapWithLegacyKey} />);
 
+    const credentialStatus = screen.getByText("访问凭据已就绪");
+    expect(credentialStatus.closest(".vv-group-toolbar")).not.toBeNull();
+    expect(screen.queryByText("正在准备访问凭据…")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "应用配置" })).toBeEnabled(),
     );

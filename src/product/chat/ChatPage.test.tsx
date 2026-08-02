@@ -1,14 +1,20 @@
-import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NewApiBootstrap, NewApiGroup } from "../types";
 import { ChatPage } from "./ChatPage";
+import { saveChatStore } from "./storage";
 
-const modelFetchMock = vi.hoisted(() => ({
-  fetchModelsForConfig: vi.fn(),
+const newApiMock = vi.hoisted(() => ({
+  getGroupModels: vi.fn(),
 }));
 
-vi.mock("@/lib/api/model-fetch", () => modelFetchMock);
+vi.mock("../api", () => ({ newApiApi: newApiMock }));
 
 vi.mock("./ChatRuntime", () => ({
   ChatRuntime: ({
@@ -61,20 +67,15 @@ function bootstrap(groups: NewApiGroup[]): NewApiBootstrap {
 describe("ChatPage model loading", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    modelFetchMock.fetchModelsForConfig.mockReset();
+    newApiMock.getGroupModels.mockReset();
   });
 
-  it("automatically loads models for the initial and newly selected groups", async () => {
+  it("automatically loads website models for each selected group", async () => {
     const daily = group("daily", { isDefault: true });
     const coding = group("coding");
-    modelFetchMock.fetchModelsForConfig.mockImplementation(
-      async (baseUrl: string) => [
-        {
-          id: baseUrl.includes("daily") ? "daily-model" : "coding-model",
-          ownedBy: null,
-        },
-      ],
-    );
+    newApiMock.getGroupModels.mockImplementation(async (groupId: string) => [
+      groupId === "daily" ? "daily-model" : "coding-model",
+    ]);
 
     render(
       <ChatPage
@@ -87,10 +88,7 @@ describe("ChatPage model loading", () => {
     expect(await screen.findByTestId("chat-runtime")).toHaveTextContent(
       "daily:daily-model",
     );
-    expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledWith(
-      daily.baseUrl,
-      daily.apiKey,
-    );
+    expect(newApiMock.getGroupModels).toHaveBeenCalledWith(daily.id);
 
     fireEvent.change(screen.getByRole("combobox", { name: "分组" }), {
       target: { value: coding.id },
@@ -101,55 +99,39 @@ describe("ChatPage model loading", () => {
         "coding:coding-model",
       ),
     );
-    expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledWith(
-      coding.baseUrl,
-      coding.apiKey,
-    );
+    expect(newApiMock.getGroupModels).toHaveBeenCalledWith(coding.id);
   });
 
-  it("waits for the group key before loading its models", async () => {
-    const withoutKey = group("daily", { apiKey: "", isDefault: true });
-    const withKey = { ...withoutKey, apiKey: "sk-prepared" };
-    const initial = bootstrap([withoutKey]);
-    const prepared = bootstrap([withKey]);
-    const ensureTokens = vi.fn().mockResolvedValue(prepared);
-    modelFetchMock.fetchModelsForConfig.mockResolvedValue([
-      { id: "prepared-model", ownedBy: null },
-    ]);
+  it("loads the model list without waiting for the group chat key", async () => {
+    const daily = group("daily", { apiKey: "", isDefault: true });
+    const data = bootstrap([daily]);
+    const ensureTokens = vi.fn(() => new Promise<NewApiBootstrap>(() => {}));
+    newApiMock.getGroupModels.mockResolvedValue(["prepared-model"]);
 
-    function Harness() {
-      const [data, setData] = useState(initial);
-      return (
-        <ChatPage
-          bootstrap={data}
-          preview={false}
-          onEnsureTokens={async (groupId) => {
-            const next = await ensureTokens(groupId);
-            setData(next);
-            return next;
-          }}
-        />
-      );
-    }
-
-    render(<Harness />);
+    render(
+      <ChatPage
+        bootstrap={data}
+        preview={false}
+        onEnsureTokens={ensureTokens}
+      />,
+    );
 
     await waitFor(() => expect(ensureTokens).toHaveBeenCalledWith("daily"));
-    expect(await screen.findByTestId("chat-runtime")).toHaveTextContent(
-      "daily:prepared-model",
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "模型" })).toHaveValue(
+        "prepared-model",
+      ),
     );
-    expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledOnce();
-    expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledWith(
-      withKey.baseUrl,
-      withKey.apiKey,
-    );
+    expect(screen.getByRole("combobox", { name: "模型" })).toBeEnabled();
+    expect(newApiMock.getGroupModels).toHaveBeenCalledWith("daily");
+    expect(screen.queryByTestId("chat-runtime")).not.toBeInTheDocument();
   });
 
-  it("allows a failed model request to be retried", async () => {
+  it("allows a failed website model request to be retried", async () => {
     const daily = group("daily", { isDefault: true });
-    modelFetchMock.fetchModelsForConfig
+    newApiMock.getGroupModels
       .mockRejectedValueOnce(new Error("HTTP 500"))
-      .mockResolvedValueOnce([{ id: "retry-model", ownedBy: null }]);
+      .mockResolvedValueOnce(["retry-model"]);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     render(
@@ -166,6 +148,66 @@ describe("ChatPage model loading", () => {
     expect(await screen.findByTestId("chat-runtime")).toHaveTextContent(
       "daily:retry-model",
     );
-    expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledTimes(2);
+    expect(newApiMock.getGroupModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a conversation until the delete dialog is confirmed", async () => {
+    const daily = group("daily", { isDefault: true });
+    const data = bootstrap([daily]);
+    saveChatStore(data.user.id, {
+      version: 1,
+      activeThreadId: "thread-one",
+      threads: [
+        {
+          id: "thread-one",
+          title: "第一条对话",
+          groupId: daily.id,
+          modelId: "",
+          messages: [],
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        {
+          id: "thread-two",
+          title: "第二条对话",
+          groupId: daily.id,
+          modelId: "",
+          messages: [],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    render(<ChatPage bootstrap={data} preview onEnsureTokens={vi.fn()} />);
+
+    const history = screen.getByRole("complementary", { name: "历史对话" });
+    const firstItem = within(history)
+      .getByText("第一条对话")
+      .closest(".vv-chat-history__item");
+    expect(firstItem).not.toBeNull();
+    fireEvent.click(
+      within(firstItem as HTMLElement).getByRole("button", {
+        name: "删除对话",
+      }),
+    );
+
+    expect(within(history).getByText("第一条对话")).toBeInTheDocument();
+    expect(screen.getByText(/确定删除“第一条对话”/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(within(history).getByText("第一条对话")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(firstItem as HTMLElement).getByRole("button", {
+        name: "删除对话",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() =>
+      expect(within(history).queryByText("第一条对话")).not.toBeInTheDocument(),
+    );
+    expect(within(history).getByText("第二条对话")).toBeInTheDocument();
   });
 });

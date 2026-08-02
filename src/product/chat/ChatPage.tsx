@@ -11,7 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchModelsForConfig } from "@/lib/api/model-fetch";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { newApiApi } from "../api";
 import type { NewApiBootstrap, NewApiGroup } from "../types";
 import { ChatRuntime, type ChatRuntimeModel } from "./ChatRuntime";
 import {
@@ -40,7 +41,7 @@ interface GroupModelState {
 }
 
 function groupConnectionKey(group: NewApiGroup): string {
-  return `${group.baseUrl}\u0000${group.apiKey}`;
+  return group.id;
 }
 
 function bootstrapModels(group: NewApiGroup): ChatRuntimeModel[] {
@@ -49,7 +50,7 @@ function bootstrapModels(group: NewApiGroup): ChatRuntimeModel[] {
 
 function normalizeFetchedModels(
   group: NewApiGroup,
-  models: Awaited<ReturnType<typeof fetchModelsForConfig>>,
+  models: string[],
 ): ChatRuntimeModel[] {
   const cachedNames = new Map(
     group.models.map((model) => [model.id, model.name] as const),
@@ -57,7 +58,7 @@ function normalizeFetchedModels(
   const seen = new Set<string>();
   const normalized: ChatRuntimeModel[] = [];
   for (const model of models) {
-    const id = model.id.trim();
+    const id = model.trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
     normalized.push({ id, name: cachedNames.get(id) || id });
@@ -127,6 +128,10 @@ export function ChatPage({
   const [query, setQuery] = useState("");
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const [tokenState, setTokenState] = useState<{
     groupId: string;
     status: "idle" | "loading" | "error";
@@ -136,12 +141,7 @@ export function ChatPage({
     Record<string, GroupModelState>
   >({});
   const [modelRefreshVersion, setModelRefreshVersion] = useState(0);
-  const inFlightModelRequests = useRef(
-    new Map<
-      string,
-      Promise<Awaited<ReturnType<typeof fetchModelsForConfig>>>
-    >(),
-  );
+  const inFlightModelRequests = useRef(new Map<string, Promise<string[]>>());
 
   useEffect(() => {
     saveChatStore(bootstrap.user.id, store);
@@ -238,14 +238,7 @@ export function ChatPage({
   }, [onEnsureTokens, preview, selectedGroup]);
 
   useEffect(() => {
-    if (
-      preview ||
-      !selectedGroup?.id ||
-      !selectedGroup.baseUrl ||
-      !selectedGroup.apiKey
-    ) {
-      return;
-    }
+    if (preview || !selectedGroup?.id) return;
 
     const group = selectedGroup;
     const connectionKey = groupConnectionKey(group);
@@ -262,7 +255,7 @@ export function ChatPage({
 
     let request = inFlightModelRequests.current.get(requestKey);
     if (!request) {
-      request = fetchModelsForConfig(group.baseUrl, group.apiKey);
+      request = newApiApi.getGroupModels(group.id);
       inFlightModelRequests.current.set(requestKey, request);
       void request.then(
         () => inFlightModelRequests.current.delete(requestKey),
@@ -309,13 +302,7 @@ export function ChatPage({
     return () => {
       cancelled = true;
     };
-  }, [
-    modelRefreshVersion,
-    preview,
-    selectedGroup?.apiKey,
-    selectedGroup?.baseUrl,
-    selectedGroup?.id,
-  ]);
+  }, [modelRefreshVersion, preview, selectedGroup?.id]);
 
   const filteredThreads = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -368,33 +355,32 @@ export function ChatPage({
     setQuery("");
   }, [bootstrap]);
 
-  const deleteThread = useCallback(
-    (threadId: string) => {
-      if (!window.confirm("确定删除这条对话吗？此操作无法撤销。")) return;
-      setStore((current) => {
-        const remaining = current.threads.filter(
-          (thread) => thread.id !== threadId,
-        );
-        if (remaining.length > 0) {
-          return {
-            ...current,
-            activeThreadId:
-              current.activeThreadId === threadId
-                ? remaining[0].id
-                : current.activeThreadId,
-            threads: remaining,
-          };
-        }
-        const replacement = createChatThread(bootstrap);
+  const confirmDeleteThread = useCallback(() => {
+    if (!pendingDelete) return;
+    const threadId = pendingDelete.id;
+    setPendingDelete(null);
+    setStore((current) => {
+      const remaining = current.threads.filter(
+        (thread) => thread.id !== threadId,
+      );
+      if (remaining.length > 0) {
         return {
-          version: 1,
-          activeThreadId: replacement.id,
-          threads: [replacement],
+          ...current,
+          activeThreadId:
+            current.activeThreadId === threadId
+              ? remaining[0].id
+              : current.activeThreadId,
+          threads: remaining,
         };
-      });
-    },
-    [bootstrap],
-  );
+      }
+      const replacement = createChatThread(bootstrap);
+      return {
+        version: 1,
+        activeThreadId: replacement.id,
+        threads: [replacement],
+      };
+    });
+  }, [bootstrap, pendingDelete]);
 
   const beginRename = (thread: ChatThreadRecord) => {
     setEditingThreadId(thread.id);
@@ -547,7 +533,12 @@ export function ChatPage({
                         type="button"
                         title="删除"
                         aria-label="删除对话"
-                        onClick={() => deleteThread(thread.id)}
+                        onClick={() =>
+                          setPendingDelete({
+                            id: thread.id,
+                            title: thread.title,
+                          })
+                        }
                       >
                         <Trash2 size={12} />
                       </button>
@@ -630,11 +621,7 @@ export function ChatPage({
                 type="button"
                 className="vv-chat-model-refresh"
                 onClick={refreshModels}
-                disabled={
-                  modelsAreLoading ||
-                  !selectedGroup?.baseUrl ||
-                  !selectedGroup?.apiKey
-                }
+                disabled={modelsAreLoading || !selectedGroup?.id}
                 title="重新拉取模型"
                 aria-label="重新拉取模型"
               >
@@ -664,7 +651,7 @@ export function ChatPage({
             <div className="vv-chat-unavailable">
               <span className="vv-spin" />
               <strong>正在拉取模型列表</strong>
-              <p>正在读取当前分组通过 /v1/models 提供的可用模型。</p>
+              <p>正在读取网站为当前分组启用的可用模型。</p>
             </div>
           ) : modelError && availableModels.length === 0 ? (
             <div className="vv-chat-unavailable is-error">
@@ -678,7 +665,7 @@ export function ChatPage({
             <div className="vv-chat-unavailable">
               <MessageSquareText size={28} />
               <strong>当前分组没有返回可用模型</strong>
-              <p>请检查分组的 Base URL，或重新拉取模型列表。</p>
+              <p>请确认网站已为该分组启用模型，或重新拉取模型列表。</p>
               <button type="button" onClick={refreshModels}>
                 <RefreshCw size={13} /> 重新拉取
               </button>
@@ -703,6 +690,15 @@ export function ChatPage({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="删除对话"
+        message={`确定删除“${pendingDelete?.title ?? "这条对话"}”吗？此操作无法撤销。`}
+        confirmText="确认删除"
+        cancelText="取消"
+        onConfirm={confirmDeleteThread}
+        onCancel={() => setPendingDelete(null)}
+      />
     </section>
   );
 }

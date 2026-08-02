@@ -13,7 +13,7 @@
 
 ## 编译参数
 
-生产构建已通过 `.env.production` 固定使用真实服务域名；如需临时指向测试环境，可在构建环境覆盖：
+生产构建通过 `.env.production`、本地 `pnpm dev` 通过 `.env.development` 固定使用真实服务域名；如需临时指向测试环境，可在启动或构建环境覆盖：
 
 ```bash
 VITE_NEWAPI_BASE_URL=https://vvcode.top

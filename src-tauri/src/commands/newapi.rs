@@ -337,6 +337,21 @@ fn data(value: &Value) -> &Value {
     value.get("data").unwrap_or(value)
 }
 
+fn group_models_from_value(value: &Value) -> Result<Vec<String>, String> {
+    let items = data(value)
+        .as_array()
+        .ok_or_else(|| "NewAPI 返回了无效的分组模型列表".to_string())?;
+    let mut seen = BTreeSet::new();
+    let mut models = Vec::new();
+    for item in items {
+        let model = value_string(Some(item)).trim().to_string();
+        if !model.is_empty() && seen.insert(model.clone()) {
+            models.push(model);
+        }
+    }
+    Ok(models)
+}
+
 fn value_string(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(value)) => value.clone(),
@@ -1052,6 +1067,30 @@ pub async fn newapi_get_api_info_routes() -> Result<Vec<NewApiInfoRoute>, String
 }
 
 #[tauri::command]
+pub async fn newapi_get_group_models(group_id: String) -> Result<Vec<String>, String> {
+    let session = load_session()?.ok_or_else(|| "尚未登录 NewAPI".to_string())?;
+    let group_id = group_id.trim();
+    if group_id.is_empty() {
+        return Err("未指定需要获取模型的分组".to_string());
+    }
+
+    let encoded_group =
+        url::form_urlencoded::byte_serialize(group_id.as_bytes()).collect::<String>();
+    let path = format!("/api/user/models?group={encoded_group}");
+    let client = client()?;
+    let (status, value) = authenticated_get(&client, &session, &path).await?;
+    if !status.is_success()
+        || value
+            .get("success")
+            .and_then(Value::as_bool)
+            .is_some_and(|success| !success)
+    {
+        return Err(response_message(&value, "无法获取分组可用模型"));
+    }
+    group_models_from_value(&value)
+}
+
+#[tauri::command]
 pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootstrap, String> {
     let session = load_session()?.ok_or_else(|| "尚未登录 NewAPI".to_string())?;
     let group_id = group_id.trim();
@@ -1124,6 +1163,18 @@ mod tests {
     fn rejects_non_oauth_loopback_path() {
         assert!(parse_loopback_oauth_target("/favicon.ico").is_none());
         assert!(parse_loopback_oauth_target("https://example.com/oauth/newapi").is_none());
+    }
+
+    #[test]
+    fn parses_group_models_without_empty_or_duplicate_items() {
+        let value = serde_json::json!({
+            "success": true,
+            "data": ["model-b", " ", "model-a", "model-b"]
+        });
+        assert_eq!(
+            group_models_from_value(&value).unwrap(),
+            vec!["model-b", "model-a"]
+        );
     }
 
     #[tokio::test]
