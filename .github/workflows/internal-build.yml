@@ -1,20 +1,14 @@
-name: Internal desktop build
+name: Internal desktop pre-release
 
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        description: Platforms to build
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - windows
-          - macos
 
 permissions:
   contents: read
+
+concurrency:
+  group: internal-desktop-pre-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -50,7 +44,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add macOS universal targets
-        if: runner.os == 'macOS' && inputs.target != 'windows'
+        if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Cache Cargo registry and build
@@ -67,15 +61,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build macOS internal package
-        if: runner.os == 'macOS' && inputs.target != 'windows'
+        if: runner.os == 'macOS'
         run: pnpm package:internal -- --target universal-apple-darwin
 
       - name: Build Windows internal package
-        if: runner.os == 'Windows' && inputs.target != 'macos'
+        if: runner.os == 'Windows'
         run: pnpm package:internal
 
       - name: Collect and verify macOS artifacts
-        if: runner.os == 'macOS' && inputs.target != 'windows'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -94,7 +88,7 @@ jobs:
           cp "$dmg_path" internal-artifacts/VV-Code-internal-macOS.dmg
 
       - name: Collect Windows artifacts
-        if: runner.os == 'Windows' && inputs.target != 'macos'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -110,12 +104,107 @@ jobs:
           Copy-Item $nsis.FullName internal-artifacts/VV-Code-internal-Windows-x64-setup.exe
 
       - name: Upload internal packages
-        if: >-
-          (runner.os == 'macOS' && inputs.target != 'windows') ||
-          (runner.os == 'Windows' && inputs.target != 'macos')
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: internal-artifacts/*
           if-no-files-found: error
           retention-days: 14
+
+  publish-prerelease:
+    name: Publish internal GitHub Pre-release
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download internal packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: VV-Code-internal-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare release metadata and assets
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          tag="internal-v${version}-build.${GITHUB_RUN_NUMBER}"
+          release_name="VV Code v${version} Internal Build #${GITHUB_RUN_NUMBER}"
+          short_sha="${GITHUB_SHA:0:7}"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+
+          test -f release-assets/VV-Code-internal-macOS.dmg
+          test -f release-assets/VV-Code-internal-macOS.app.zip
+          test -f release-assets/VV-Code-internal-Windows-x64.msi
+          test -f release-assets/VV-Code-internal-Windows-x64-setup.exe
+
+          mkdir -p publish-assets
+          cp release-assets/VV-Code-internal-macOS.dmg \
+            "publish-assets/VV-Code-${tag}-macOS.dmg"
+          cp release-assets/VV-Code-internal-macOS.app.zip \
+            "publish-assets/VV-Code-${tag}-macOS.app.zip"
+          cp release-assets/VV-Code-internal-Windows-x64.msi \
+            "publish-assets/VV-Code-${tag}-Windows-x64.msi"
+          cp release-assets/VV-Code-internal-Windows-x64-setup.exe \
+            "publish-assets/VV-Code-${tag}-Windows-x64-setup.exe"
+
+          (
+            cd publish-assets
+            sha256sum VV-Code-* > SHA256SUMS.txt
+          )
+
+          ls -lah publish-assets
+
+      - name: Create GitHub Pre-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.metadata.outputs.release_name }}
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            ## VV Code 内测版本
+
+            这是 VV Code 的自动化内测构建，仅供测试和反馈，不是已签名、公证的正式版本，也不会用于应用内自动更新。
+
+            ### 下载
+
+            - **macOS Universal（Intel + Apple Silicon）**：`VV-Code-${{ steps.metadata.outputs.tag }}-macOS.dmg`（推荐）或 `.app.zip`
+            - **Windows x64**：`VV-Code-${{ steps.metadata.outputs.tag }}-Windows-x64-setup.exe`（推荐）或 `.msi`
+            - **文件校验**：`SHA256SUMS.txt`
+
+            ### 安装提示
+
+            - macOS 使用 ad-hoc 签名且未经过 Apple 公证，首次启动可能需要在“系统设置 → 隐私与安全性”中选择“仍要打开”。
+            - Windows 安装包未进行代码签名，可能出现 Microsoft Defender SmartScreen 提示。
+
+            ### 构建信息
+
+            - Commit: [`${{ steps.metadata.outputs.short_sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            - Workflow: [Internal desktop pre-release #${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ### Open Source Attribution / 开源致谢
+
+            VV Code is an independently maintained derivative of [CC Switch](https://github.com/farion1231/cc-switch), originally created by Jason Young and distributed under the MIT License. This is not an official CC Switch release.
+          files: publish-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add release link to workflow summary
+        shell: bash
+        run: |
+          echo "## Internal Pre-release published" >> "$GITHUB_STEP_SUMMARY"
+          echo "[${{ steps.metadata.outputs.release_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.metadata.outputs.tag }})" >> "$GITHUB_STEP_SUMMARY"
