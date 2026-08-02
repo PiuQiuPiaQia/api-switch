@@ -15,9 +15,7 @@ const tauriCli = join(
 );
 
 if (platform !== "darwin" && platform !== "win32") {
-  console.error(
-    "Internal desktop packages can only be built on macOS or Windows.",
-  );
+  console.error("Beta packages can only be built on macOS or Windows.");
   process.exit(1);
 }
 
@@ -28,7 +26,7 @@ if (!existsSync(tauriCli)) {
 
 const env = { ...process.env };
 const bundles = platform === "darwin" ? "app,dmg" : "msi,nsis";
-const internalConfig =
+const betaConfig =
   platform === "win32"
     ? JSON.stringify({ bundle: { windows: { wix: { template: null } } } })
     : null;
@@ -42,7 +40,7 @@ if (existsSync(cargoBin)) {
 
 if (platform === "darwin") {
   // Ad-hoc signing keeps Apple Silicon downloads structurally signed without
-  // pretending that this internal build has a Developer ID or notarization.
+  // pretending that this beta build has a Developer ID or notarization.
   env.APPLE_SIGNING_IDENTITY = "-";
 
   for (const key of [
@@ -58,7 +56,7 @@ if (platform === "darwin") {
 }
 
 console.log(
-  `Building VV Code internal package for ${
+  `Building VV Code beta package for ${
     platform === "darwin" ? "macOS (ad-hoc signed)" : "Windows (unsigned)"
   }...`,
 );
@@ -70,7 +68,7 @@ const result = spawnSync(
     "build",
     "--bundles",
     bundles,
-    ...(internalConfig ? ["--config", internalConfig] : []),
+    ...(betaConfig ? ["--config", betaConfig] : []),
     ...forwardedArgs,
   ],
   {

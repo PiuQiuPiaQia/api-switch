@@ -28,6 +28,7 @@ VITE_NEWAPI_BASE_URL=https://vvcode.top
 ## 当前发行保护
 
 - 应用名：`VV Code`
+- 当前版本：`0.0.1`
 - 官方网站：<https://vvcode.top/>
 - Bundle Identifier：`com.vvcode.desktop`
 - OAuth 回调：`http://127.0.0.1:{动态端口}/oauth/newapi`（仅本地回环）
@@ -36,19 +37,17 @@ VITE_NEWAPI_BASE_URL=https://vvcode.top
 
 正式发布前还需配置自有代码签名、安装包图标、更新签名公钥和自有更新地址。不得恢复上游 CC Switch 的更新公钥或下载地址，否则二开版本可能被上游包覆盖。
 
-## 内测打包
+## Beta 发布
 
-Windows 和 macOS 统一使用以下命令生成内测安装包：
+在对应系统本地生成 Beta 安装包：
 
 ```bash
-pnpm package:internal
+pnpm package:beta
 ```
 
 - macOS：必须在 Mac 上执行，生成 ad-hoc 签名的 `.app` 和 `.dmg`。它没有 Apple Developer ID，也不会提交 Apple 公证；接收者首次启动时需要在“系统设置 → 隐私与安全性”中选择“仍要打开”。
 - Windows：必须在 Windows 上执行，生成未签名的 MSI 和 NSIS 安装器；接收者可能会看到 Microsoft Defender SmartScreen 提示。
-- GitHub 仓库的 `Internal desktop pre-release` 工作流可手动执行。每次运行会同时生成 macOS Universal 和 Windows x64 两组产物；只有两组构建和校验都成功后，才会创建一个 GitHub Pre-release。
-- 内测标签格式为 `internal-v<应用版本>-build.<Actions 流水号>`，不会匹配正式发布使用的 `v*` 标签，也不会被标记为仓库的 `latest` Release。
-- Pre-release 会长期显示在仓库的 Releases 页面，直到手动删除；其中包含 DMG、macOS `.app.zip`、Windows NSIS、MSI 和 `SHA256SUMS.txt`。Actions 中的备份产物仍只保留 14 天。
-- 内测 Pre-release 不生成 `latest.json` 或更新签名，不得被应用内自动更新流程消费。
+- GitHub 的 `Beta Release` 工作流会同时构建 macOS Universal 和 Windows x64，成功后创建 `v<版本>-beta.<编号>` Pre-release。运行时填写的 `notes` 会作为精简更新说明。
+- Beta Release 包含 DMG、macOS `.app.zip`、Windows NSIS、MSI 和 `SHA256SUMS.txt`；它不会成为 `latest`，也不会生成应用更新清单。
 
-内测构建不得作为已签名、已公证的正式版本宣传。获得正式证书后，仍使用独立的 `Release` 工作流发布。
+正式版本使用 `Production Release` 工作流，仅响应非 Beta 的 `v*` 标签，并发布为仓库的 latest Release。

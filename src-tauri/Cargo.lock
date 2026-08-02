@@ -6496,7 +6496,7 @@ dependencies = [
 
 [[package]]
 name = "vv-code"
-version = "3.19.1"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "arboard",

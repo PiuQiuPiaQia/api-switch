@@ -1,12 +1,12 @@
 {
   "name": "vv-code",
-  "version": "3.19.1",
-  "description": "VV Code single-provider AI development workspace",
+  "version": "0.0.1",
+  "description": "VV Code desktop workspace for AI coding tools",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",
     "build": "pnpm tauri build",
-    "package:internal": "node scripts/build-internal.mjs",
+    "package:beta": "node scripts/build-beta.mjs",
     "icons:generate": "tauri icon src/product/assets/app-icon.png",
     "tauri": "tauri",
     "dev:renderer": "vite",

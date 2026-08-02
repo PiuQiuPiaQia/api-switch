@@ -1,0 +1,197 @@
+name: Beta Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Core changes in this beta
+        required: false
+        default: 首个 VV Code Beta 版本，包含核心功能和最新修复。
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Universal
+            os: macos-14
+            artifact: VV-Code-beta-macOS
+          - label: Windows x64
+            os: windows-2022
+            artifact: VV-Code-beta-Windows-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.3
+          run_install: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache Rust
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS package
+        if: runner.os == 'macOS'
+        run: pnpm package:beta -- --target universal-apple-darwin
+
+      - name: Build Windows package
+        if: runner.os == 'Windows'
+        run: pnpm package:beta
+
+      - name: Collect macOS package
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p beta-artifacts
+          bundle_root="src-tauri/target/universal-apple-darwin/release/bundle"
+          app_path=$(find "$bundle_root/macos" -maxdepth 1 -name '*.app' -type d | head -1)
+          dmg_path=$(find "$bundle_root/dmg" -maxdepth 1 -name '*.dmg' -type f | head -1)
+
+          test -n "$app_path"
+          test -n "$dmg_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign -dv --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc'
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$app_path" beta-artifacts/VV-Code-beta-macOS.app.zip
+          cp "$dmg_path" beta-artifacts/VV-Code-beta-macOS.dmg
+
+      - name: Collect Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path beta-artifacts | Out-Null
+          $bundleRoot = 'src-tauri/target/release/bundle'
+          $msi = Get-ChildItem -Path $bundleRoot -Recurse -Filter *.msi | Select-Object -First 1
+          $nsis = Get-ChildItem -Path $bundleRoot -Recurse -Filter *.exe | Select-Object -First 1
+
+          if ($null -eq $msi) { throw 'Windows MSI was not generated.' }
+          if ($null -eq $nsis) { throw 'Windows installer was not generated.' }
+
+          Copy-Item $msi.FullName beta-artifacts/VV-Code-beta-Windows-x64.msi
+          Copy-Item $nsis.FullName beta-artifacts/VV-Code-beta-Windows-x64-setup.exe
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: beta-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish Beta Release
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: VV-Code-beta-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          tag="v${version}-beta.${GITHUB_RUN_NUMBER}"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          test -f release-assets/VV-Code-beta-macOS.dmg
+          test -f release-assets/VV-Code-beta-macOS.app.zip
+          test -f release-assets/VV-Code-beta-Windows-x64.msi
+          test -f release-assets/VV-Code-beta-Windows-x64-setup.exe
+
+          mkdir -p publish-assets
+          cp release-assets/VV-Code-beta-macOS.dmg \
+            "publish-assets/VV-Code-${tag}-macOS.dmg"
+          cp release-assets/VV-Code-beta-macOS.app.zip \
+            "publish-assets/VV-Code-${tag}-macOS.app.zip"
+          cp release-assets/VV-Code-beta-Windows-x64.msi \
+            "publish-assets/VV-Code-${tag}-Windows-x64.msi"
+          cp release-assets/VV-Code-beta-Windows-x64-setup.exe \
+            "publish-assets/VV-Code-${tag}-Windows-x64-setup.exe"
+
+          (
+            cd publish-assets
+            sha256sum VV-Code-* > SHA256SUMS.txt
+          )
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: VV Code ${{ steps.release.outputs.tag }}
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            ## 更新内容
+
+            ${{ inputs.notes }}
+
+            ## 下载
+
+            - macOS：`.dmg` 或 `.app.zip`
+            - Windows：`setup.exe` 或 `.msi`
+
+            > Beta 安装包未经过 Apple 公证或正式代码签名，安装时可能出现系统安全提示。
+
+            基于 [CC Switch](https://github.com/farion1231/cc-switch) 开发，遵循 MIT License。
+          files: publish-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add release link
+        shell: bash
+        run: |
+          echo "[VV Code ${{ steps.release.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.release.outputs.tag }})" >> "$GITHUB_STEP_SUMMARY"

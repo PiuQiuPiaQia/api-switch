@@ -1,7 +1,7 @@
 node_modules/
 dist/
 release/
-internal-artifacts/
+beta-artifacts/
 .DS_Store
 *.log
 .env

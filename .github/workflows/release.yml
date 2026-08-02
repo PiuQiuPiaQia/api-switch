@@ -1,9 +1,10 @@
-name: Release
+name: Production Release
 
 on:
   push:
     tags:
       - "v*"
+      - "!v*-beta.*"
 
 permissions:
   contents: write
@@ -14,19 +15,25 @@ concurrency:
 
 jobs:
   release:
+    name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     environment: release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
-          - os: windows-11-arm
+          - label: Windows x64
+            os: windows-2022
+          - label: Windows ARM64
+            os: windows-11-arm
             arch: arm64
-          - os: ubuntu-22.04
-          - os: ubuntu-22.04-arm
+          - label: Linux x64
+            os: ubuntu-22.04
+          - label: Linux ARM64
+            os: ubuntu-22.04-arm
             arch: arm64
-          - os: macos-14
+          - label: macOS Universal
+            os: macos-14
 
     steps:
       - name: Checkout
@@ -585,7 +592,7 @@ jobs:
           fi
 
   publish-release:
-    name: Publish GitHub Release
+    name: Publish Production Release
     runs-on: ubuntu-22.04
     needs: release
     permissions:
@@ -604,42 +611,29 @@ jobs:
           set -euo pipefail
           ls -la release-assets
 
-      - name: Upload Release Assets
+      - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: VV Code ${{ github.ref_name }}
-          prerelease: true
+          prerelease: false
+          make_latest: true
           body: |
-            ## VV Code ${{ github.ref_name }}
+            ## 更新内容
 
-            🌐 **Official Website / 官方网站 / 公式サイト**: [vvcode.top](https://vvcode.top)
+            本版本的核心变更见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)。
 
-            VV Code AI 开发工作台
+            ## 下载
 
-            ### 下载
+            请从下方 Assets 选择对应的 macOS、Windows 或 Linux 安装包。
 
-            - **macOS**: `VV-Code-${{ github.ref_name }}-macOS.dmg`（推荐）或 `VV-Code-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `VV-Code-${{ github.ref_name }}-Windows.msi`（安装版）或 `VV-Code-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `VV-Code-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `VV-Code-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
-            - **Linux (x86_64)**: `VV-Code-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `VV-Code-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
-
-            > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
-
-            ### Open Source Attribution / 开源致谢
-
-            VV Code is an independently maintained derivative of [CC Switch](https://github.com/farion1231/cc-switch),
-            originally created by Jason Young and distributed under the MIT License. This is not an official CC Switch release.
-
-            ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
+            基于 [CC Switch](https://github.com/farion1231/cc-switch) 开发，遵循 MIT License。
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   assemble-latest-json:
-    name: Assemble latest.json
+    name: Build Update Manifest
     runs-on: ubuntu-22.04
     needs: publish-release
     permissions:
