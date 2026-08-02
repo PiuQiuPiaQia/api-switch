@@ -30,6 +30,12 @@ describe("AccountPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("@alice")).toBeInTheDocument();
     expect(screen.queryByText(/root user/i)).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("heading", { name: "用户信息", level: 1 })
+        .closest(".vv-page-layout--narrow"),
+    ).not.toBeNull();
+    expect(screen.queryByText("账号中心")).not.toBeInTheDocument();
   });
 
   it("shows the wallet balance and links to the website recharge page", () => {

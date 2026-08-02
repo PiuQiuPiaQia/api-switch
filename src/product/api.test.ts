@@ -55,4 +55,15 @@ describe("newApiApi", () => {
       timeoutSecs: 6,
     });
   });
+
+  it("restores the selected tool through the native configuration command", async () => {
+    invokeMock.mockResolvedValue(undefined);
+
+    await expect(
+      newApiApi.restoreOfficialConfiguration("codex"),
+    ).resolves.toBeUndefined();
+    expect(invokeMock).toHaveBeenCalledWith("restore_official_configuration", {
+      app: "codex",
+    });
+  });
 });

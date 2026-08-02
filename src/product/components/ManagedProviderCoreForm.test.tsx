@@ -27,7 +27,7 @@ const group: NewApiGroup = {
   models: [],
 };
 
-function scenario(id: "claude" | "codex") {
+function scenario(id: "claude" | "codex" | "openclaw" | "hermes") {
   return PRODUCT.scenarios.find((item) => item.id === id)!;
 }
 
@@ -147,4 +147,47 @@ describe("ManagedProviderCoreForm", () => {
     const submitted = onSubmit.mock.calls[0][0] as Provider;
     expect(submitted.settingsConfig.config).not.toContain("model =");
   });
+
+  it.each(["openclaw", "hermes"] as const)(
+    "uses the first model as the default model for %s",
+    async (scenarioId) => {
+      const agentScenario = scenario(scenarioId);
+      const onSubmit = vi.fn();
+      const provider = buildManagedProvider(agentScenario, group);
+      provider.settingsConfig.models = [
+        { id: "model-primary", name: "Primary" },
+        { id: "model-secondary", name: "Secondary" },
+      ];
+
+      render(
+        <>
+          <ManagedProviderCoreForm
+            formId={`managed-${scenarioId}`}
+            scenario={agentScenario}
+            group={group}
+            provider={provider}
+            hasApiKey
+            onSubmit={onSubmit}
+          />
+          <button type="submit" form={`managed-${scenarioId}`}>
+            应用
+          </button>
+        </>,
+      );
+
+      expect(screen.getByText("默认模型")).toBeInTheDocument();
+      expect(
+        screen.getByText(scenarioId === "openclaw" ? "回退模型" : "备选模型"),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "默认模型" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "应用" }));
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+      const submitted = onSubmit.mock.calls[0][0] as Provider;
+      expect(submitted.settingsConfig.models).toEqual([
+        { id: "model-primary", name: "Primary" },
+        { id: "model-secondary", name: "Secondary" },
+      ]);
+    },
+  );
 });

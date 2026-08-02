@@ -11,8 +11,10 @@
 
 use crate::app_config::AppType;
 
+pub(crate) const CLAUDE_OFFICIAL_PROVIDER_ID: &str = "claude-official";
 pub(crate) const CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID: &str = "claude-desktop-official";
 pub(crate) const CODEX_OFFICIAL_PROVIDER_ID: &str = "codex-official";
+pub(crate) const GEMINI_OFFICIAL_PROVIDER_ID: &str = "gemini-official";
 pub(crate) const GROKBUILD_OFFICIAL_PROVIDER_ID: &str = "grokbuild-official";
 
 /// 单条官方供应商种子定义。
@@ -32,7 +34,7 @@ pub(crate) struct OfficialProviderSeed {
 /// id 固定，便于幂等检查；name 直接用英文原名（与前端预设一致），不做 i18n。
 pub(crate) const OFFICIAL_SEEDS: &[OfficialProviderSeed] = &[
     OfficialProviderSeed {
-        id: "claude-official",
+        id: CLAUDE_OFFICIAL_PROVIDER_ID,
         app_type: AppType::Claude,
         name: "Claude Official",
         website_url: "https://www.anthropic.com/claude-code",
@@ -62,7 +64,7 @@ pub(crate) const OFFICIAL_SEEDS: &[OfficialProviderSeed] = &[
         settings_config_json: r#"{"auth":{},"config":""}"#,
     },
     OfficialProviderSeed {
-        id: "gemini-official",
+        id: GEMINI_OFFICIAL_PROVIDER_ID,
         app_type: AppType::Gemini,
         name: "Google Official",
         website_url: "https://ai.google.dev/",

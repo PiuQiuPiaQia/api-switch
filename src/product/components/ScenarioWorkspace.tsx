@@ -9,6 +9,7 @@ import {
   Download,
   Loader2,
   RefreshCw,
+  RotateCcw,
   ServerCog,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ import {
   resolveGroupConnection,
 } from "../configuration";
 import { PRODUCT } from "../config";
+import { newApiApi } from "../api";
 import type {
   NewApiBootstrap,
   ProductScenario,
@@ -44,7 +46,7 @@ import type {
   ToolVersionInfo,
 } from "../types";
 import { ManagedProviderCoreForm } from "./ManagedProviderCoreForm";
-import { PageHeading } from "./PageHeading";
+import { PageLayout } from "./PageLayout";
 
 interface ScenarioWorkspaceProps {
   scenario: ProductScenario;
@@ -199,6 +201,7 @@ export function ScenarioWorkspace({
       "",
   );
   const [configuring, setConfiguring] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [keyPreparation, setKeyPreparation] = useState<KeyPreparationState>({
     groupId: "",
     phase: "checking",
@@ -483,6 +486,29 @@ export function ScenarioWorkspace({
     }
   };
 
+  const handleRestoreDefaults = async () => {
+    if (preview) {
+      toast.info("当前为开发预览模式，不会修改本机配置");
+      return;
+    }
+
+    setRestoring(true);
+    try {
+      await newApiApi.restoreOfficialConfiguration(scenario.appId);
+      toast.success(
+        scenario.appId === "openclaw" || scenario.appId === "hermes"
+          ? `${scenario.name} 已移除 VV Code 托管配置`
+          : `${scenario.name} 已恢复官方默认配置`,
+      );
+    } catch (error) {
+      toast.error("恢复官方默认配置失败", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const headerAction: "check" | "update" = updateAvailable ? "update" : "check";
   const headerBusy = toolLoading || toolAction !== null;
   const headerChecking = toolLoading || toolAction === "update";
@@ -502,25 +528,38 @@ export function ScenarioWorkspace({
       : toolInfo?.version
         ? `当前版本 ${toolInfo.version}，点击检测更新`
         : `${scenario.name} 尚未初始化，可在下方完成安装`);
+  const currentVersion = toolLoading
+    ? "检测中"
+    : toolInfo?.version
+      ? toolInfo.version
+      : toolError
+        ? "检测失败"
+        : "未安装";
 
   return (
-    <div
-      className="vv-page vv-scenario-page"
+    <PageLayout
+      className="vv-scenario-page"
       style={{ "--scenario-accent": scenario.accent } as React.CSSProperties}
-    >
-      <PageHeading
-        title={scenario.name}
-        description={scenario.description}
-        icon={
-          <ProviderIcon
-            icon={scenario.icon}
-            name={scenario.name}
-            size={21}
-            showFallback={false}
-          />
-        }
-        accent={scenario.accent}
-        actions={
+      title={scenario.name}
+      description={scenario.description}
+      icon={
+        <ProviderIcon
+          icon={scenario.icon}
+          name={scenario.name}
+          size={21}
+          showFallback={false}
+        />
+      }
+      accent={scenario.accent}
+      actions={
+        <>
+          <span
+            className={`vv-scenario-version ${environmentReady ? "is-ready" : "is-missing"} ${toolError ? "is-error" : ""}`}
+            title={headerTitle}
+          >
+            <span>当前版本</span>
+            <strong>{currentVersion}</strong>
+          </span>
           <button
             type="button"
             className={`vv-environment-button ${environmentReady ? "is-ready" : "is-missing"} ${updateAvailable ? "is-update" : ""} ${toolError ? "is-error" : ""}`}
@@ -543,9 +582,9 @@ export function ScenarioWorkspace({
             )}
             <span>{headerLabel}</span>
           </button>
-        }
-      />
-
+        </>
+      }
+    >
       {environmentReady ? (
         <section className="vv-catalog">
           <div className="vv-group-toolbar">
@@ -684,14 +723,31 @@ export function ScenarioWorkspace({
             </section>
           )}
 
-          {selectedGroup && (
-            <div className="vv-config-actions">
+          <div className="vv-config-actions">
+            <button
+              type="button"
+              className="vv-secondary-button"
+              disabled={configuring || restoring || providerLoading}
+              onClick={() => void handleRestoreDefaults()}
+            >
+              {restoring ? (
+                <Loader2 className="vv-spin" size={16} />
+              ) : (
+                <RotateCcw size={16} />
+              )}
+              {restoring ? "正在恢复" : "恢复官方默认配置"}
+            </button>
+            {selectedGroup && (
               <button
                 type="submit"
                 form={managedFormId}
                 className="vv-primary-button"
                 disabled={
-                  configuring || providerLoading || keyProvisioning || !keyReady
+                  configuring ||
+                  restoring ||
+                  providerLoading ||
+                  keyProvisioning ||
+                  !keyReady
                 }
               >
                 {configuring ? <Loader2 className="vv-spin" size={16} /> : null}
@@ -702,8 +758,8 @@ export function ScenarioWorkspace({
                     : "应用配置"}
                 {!configuring && <ArrowRight size={16} />}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       ) : (
         <EnvironmentGate
@@ -719,6 +775,6 @@ export function ScenarioWorkspace({
           onInitialize={() => void runToolAction("install")}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

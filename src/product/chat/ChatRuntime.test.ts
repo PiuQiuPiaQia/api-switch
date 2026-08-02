@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveChatApiBaseUrl } from "./ChatRuntime";
+import {
+  resolveChatApiBaseUrl,
+  shouldShowMessageLoading,
+} from "./ChatRuntime";
 
 describe("resolveChatApiBaseUrl", () => {
   it("adds the NewAPI v1 prefix when a group exposes the server root", () => {
@@ -18,5 +21,19 @@ describe("resolveChatApiBaseUrl", () => {
     expect(resolveChatApiBaseUrl("https://example.com/newapi/")).toBe(
       "https://example.com/newapi/v1",
     );
+  });
+});
+
+describe("shouldShowMessageLoading", () => {
+  it("only displays the empty-message loader while the response is running", () => {
+    expect(shouldShowMessageLoading({ type: "running" })).toBe(true);
+    expect(shouldShowMessageLoading({ type: "complete" })).toBe(false);
+    expect(
+      shouldShowMessageLoading({
+        type: "incomplete",
+        reason: "error",
+        error: "request failed",
+      }),
+    ).toBe(false);
   });
 });

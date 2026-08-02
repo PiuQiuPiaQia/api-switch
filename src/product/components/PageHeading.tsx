@@ -4,7 +4,6 @@ interface PageHeadingProps {
   title: string;
   description: string;
   icon: ReactNode;
-  eyebrow?: string;
   accent?: string;
   actions?: ReactNode;
   className?: string;
@@ -14,7 +13,6 @@ export function PageHeading({
   title,
   description,
   icon,
-  eyebrow,
   accent = "#6658ee",
   actions,
   className = "",
@@ -29,9 +27,6 @@ export function PageHeading({
           {icon}
         </span>
         <div className="vv-page-heading__copy">
-          {eyebrow && (
-            <span className="vv-page-heading__eyebrow">{eyebrow}</span>
-          )}
           <h1>{title}</h1>
           <p>{description}</p>
         </div>

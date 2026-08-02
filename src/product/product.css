@@ -735,13 +735,6 @@ body:has(.vv-app-loading) {
   gap: 1px;
 }
 
-.vv-page-heading__eyebrow {
-  color: var(--page-accent);
-  font-size: 8px;
-  font-weight: 720;
-  letter-spacing: 0.11em;
-}
-
 .vv-page-heading__actions {
   display: flex;
   flex: none;
@@ -764,48 +757,94 @@ body:has(.vv-app-loading) {
   line-height: 1.45;
 }
 
-.vv-scenario-page {
+.vv-page-layout--standard {
   width: min(1180px, calc(100% - 36px));
   padding-top: 14px;
   padding-bottom: 24px;
 }
 
-.vv-scenario-page .vv-page-heading {
+.vv-page-layout--narrow {
+  width: min(980px, calc(100% - 36px));
+  padding-top: 14px;
+  padding-bottom: 24px;
+}
+
+.vv-page-layout .vv-page-heading {
   min-height: 44px;
   gap: 16px;
   margin-bottom: 12px;
 }
 
-.vv-scenario-page .vv-page-heading__identity {
+.vv-page-layout .vv-page-heading__identity {
   gap: 10px;
 }
 
-.vv-scenario-page .vv-page-heading__icon {
+.vv-page-layout .vv-page-heading__icon {
   width: 36px;
   height: 36px;
   border-radius: 10px;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--page-accent) 8%, transparent);
 }
 
-.vv-scenario-page .vv-page-heading h1 {
+.vv-page-layout .vv-page-heading h1 {
   font-size: 17px;
 }
 
-.vv-scenario-page .vv-page-heading p {
+.vv-page-layout .vv-page-heading p {
   margin-top: 1px;
+}
+
+.vv-page-layout .vv-page-heading__actions > button,
+.vv-page-layout .vv-page-heading__actions > a {
+  min-height: 30px;
+}
+
+.vv-scenario-version {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #e2e4ea;
+  border-radius: 8px;
+  color: #8a8d9d;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.vv-scenario-version strong {
+  color: #4d5063;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 680;
+}
+
+.vv-scenario-version.is-ready {
+  border-color: color-mix(in srgb, var(--scenario-accent) 18%, #e2e4ea);
+  background: color-mix(in srgb, var(--scenario-accent) 4%, #fff);
+}
+
+.vv-scenario-version.is-error strong {
+  color: #b35c62;
+}
+
+.vv-scenario-version.is-missing:not(.is-error) strong {
+  color: #9294a2;
 }
 
 /* Chat */
 
 .vv-chat-page {
+  --vv-chat-content-width: 840px;
   display: grid;
-  grid-template-columns: 268px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  gap: 14px;
-  padding: 18px 22px 22px;
+  gap: 12px;
+  padding: 14px 16px 18px;
   background: transparent;
 }
 
@@ -1177,7 +1216,7 @@ body:has(.vv-app-loading) {
   position: relative;
   min-width: 0;
   min-height: 0;
-  padding: 24px max(30px, calc((100% - 760px) / 2)) 34px;
+  padding: 24px max(24px, calc((100% - var(--vv-chat-content-width)) / 2)) 34px;
   overflow-x: hidden;
   overflow-y: auto;
   scroll-behavior: smooth;
@@ -1186,7 +1225,7 @@ body:has(.vv-app-loading) {
 .vv-chat-message {
   display: flex;
   width: 100%;
-  max-width: 760px;
+  max-width: var(--vv-chat-content-width);
   align-items: flex-start;
   gap: 10px;
   margin: 0 auto 22px;
@@ -1232,6 +1271,46 @@ body:has(.vv-app-loading) {
   color: #404156;
   font-size: 11px;
   line-height: 1.72;
+}
+
+.vv-chat-message__error {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  margin-top: 7px;
+  padding: 10px 11px;
+  border: 1px solid #efc8cb;
+  border-radius: 10px;
+  color: #91444a;
+  background: #fff7f7;
+}
+
+.vv-chat-message__error > svg {
+  margin-top: 1px;
+  color: #c15159;
+}
+
+.vv-chat-message__error-content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vv-chat-message__error-content strong {
+  color: #7f343b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.vv-chat-message__error-detail {
+  max-height: 58px;
+  overflow: auto;
+  color: #a64d54;
+  font-size: 9px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .vv-chat-message--user .vv-chat-message__bubble {
@@ -1280,6 +1359,24 @@ body:has(.vv-app-loading) {
 
 .vv-chat-message__actions button:disabled {
   display: none;
+}
+
+.vv-chat-message__actions .vv-chat-message__retry.is-error {
+  width: auto;
+  gap: 4px;
+  padding: 0 7px;
+  color: #8f4449;
+  background: #fff7f7;
+}
+
+.vv-chat-message__actions .vv-chat-message__retry.is-error:hover:not(:disabled) {
+  color: #79343a;
+  background: #fdecee;
+}
+
+.vv-chat-message__retry span {
+  font-size: 8.5px;
+  white-space: nowrap;
 }
 
 .vv-chat-markdown > :first-child {
@@ -1568,12 +1665,12 @@ body:has(.vv-app-loading) {
 }
 
 .vv-chat-composer-wrap {
-  padding: 0 max(30px, calc((100% - 760px) / 2)) 11px;
+  padding: 0 max(24px, calc((100% - var(--vv-chat-content-width)) / 2)) 11px;
   background: linear-gradient(to top, #fff 76%, rgba(255, 255, 255, 0));
 }
 
 .vv-chat-composer {
-  max-width: 760px;
+  max-width: var(--vv-chat-content-width);
   margin: 0 auto;
   padding: 7px;
   border: 1px solid #dedde8;
@@ -1825,7 +1922,9 @@ body:has(.vv-app-loading) {
 
 @media (max-width: 1050px) {
   .vv-chat-page {
-    grid-template-columns: 230px minmax(0, 1fr);
+    grid-template-columns: 210px minmax(0, 1fr);
+    padding-right: 12px;
+    padding-left: 12px;
   }
 
   .vv-chat-panel__selectors label > span {
@@ -1838,27 +1937,6 @@ body:has(.vv-app-loading) {
 }
 
 /* Initialization */
-
-.vv-init-heading {
-  align-items: center;
-}
-
-.vv-init-heading__actions {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex: none;
-}
-
-.vv-init-heading .vv-page-heading__actions {
-  align-items: center;
-}
-
-.vv-init-heading .vv-page-heading__actions .vv-primary-button,
-.vv-init-heading .vv-page-heading__actions .vv-secondary-button {
-  min-height: 36px;
-  font-size: 11px;
-}
 
 .vv-init-alert {
   display: flex;
@@ -3380,6 +3458,13 @@ body:has(.vv-app-loading) {
   opacity: 0.55;
 }
 
+.vv-core-routes__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
 .vv-core-routes__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3450,6 +3535,47 @@ body:has(.vv-app-loading) {
   margin-top: 11px;
 }
 
+.vv-core-agent-model-card {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #e2e1e9;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.vv-core-model-role {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #858697;
+  background: #f2f2f5;
+  font-size: 7px;
+  font-weight: 680;
+}
+
+.vv-core-model-role.is-primary {
+  color: color-mix(in srgb, var(--scenario-accent) 78%, #444);
+  background: color-mix(in srgb, var(--scenario-accent) 11%, #fff);
+}
+
+.vv-core-model-order-hint {
+  margin: 0;
+  color: #8f90a0;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.vv-core-model-list-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 31px;
+  gap: 7px;
+  padding: 0 1px;
+  color: #8f90a0;
+  font-size: 8px;
+  font-weight: 620;
+}
+
 .vv-core-empty-models {
   margin: 0;
   padding: 7px 0;
@@ -3473,8 +3599,7 @@ body:has(.vv-app-loading) {
   flex: 1;
 }
 
-.vv-core-opencode-remove,
-.vv-core-add-model {
+.vv-core-opencode-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3491,19 +3616,10 @@ body:has(.vv-app-loading) {
   background: #fff8f9;
 }
 
-.vv-core-add-model {
-  justify-self: start;
-  gap: 5px;
-  min-height: 29px;
-  padding: 0 8px;
-  color: #6257c9;
-  background: #f8f7ff;
-  font-size: 8px;
-}
-
 .vv-config-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid #e7eaf0;
@@ -3514,10 +3630,6 @@ body:has(.vv-app-loading) {
 }
 
 /* Account */
-
-.vv-account-page {
-  width: min(980px, calc(100% - 56px));
-}
 
 .vv-account-hero {
   display: flex;
@@ -3866,17 +3978,18 @@ body:has(.vv-app-loading) {
     padding: 42px;
   }
 
-  .vv-page {
+  .vv-page-layout--standard,
+  .vv-page-layout--narrow {
     width: calc(100% - 38px);
   }
 
-  .vv-init-heading {
+  .vv-page-layout .vv-page-heading {
     align-items: flex-start;
   }
 
-  .vv-init-heading .vv-page-heading__actions {
-    align-items: stretch;
-    flex-direction: column-reverse;
+  .vv-page-layout .vv-page-heading__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .vv-init-overview {

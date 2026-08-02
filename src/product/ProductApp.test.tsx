@@ -103,6 +103,9 @@ describe("ProductApp tool environment checks", () => {
       screen.queryByRole("button", { name: "OpenCode" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "对话" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: "OpenClaw（龙虾）" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hermes" })).toBeInTheDocument();

@@ -186,6 +186,15 @@ export function ManagedProviderCoreForm({
     );
   };
 
+  const addAgentModel = () => {
+    const row = { rowId: `new-${crypto.randomUUID()}`, id: "", name: "" };
+    setAgentModels((current) => [...current, row]);
+  };
+
+  const removeAgentModel = (rowId: string) => {
+    setAgentModels((current) => current.filter((item) => item.rowId !== rowId));
+  };
+
   return (
     <form id={formId} className="vv-core-provider-form" onSubmit={handleSubmit}>
       <div className="vv-core-routes">
@@ -196,19 +205,28 @@ export function ManagedProviderCoreForm({
               Base URL · {connection.baseUrl}
             </small>
           </span>
-          <button
-            type="button"
-            onClick={handleFetchModels}
-            disabled={isFetchingModels || !hasApiKey}
-            className="vv-core-fetch-button"
-          >
-            {isFetchingModels ? (
-              <Loader2 className="vv-spin" size={14} />
-            ) : (
-              <Download size={14} />
+          <div className="vv-core-routes__actions">
+            <button
+              type="button"
+              onClick={handleFetchModels}
+              disabled={isFetchingModels || !hasApiKey}
+              className="vv-core-fetch-button"
+            >
+              {isFetchingModels ? (
+                <Loader2 className="vv-spin" size={14} />
+              ) : (
+                <Download size={14} />
+              )}
+              {isFetchingModels ? "正在获取" : "获取模型"}
+            </button>
+            {(scenario.id === "opencode" ||
+              scenario.id === "openclaw" ||
+              scenario.id === "hermes") && (
+              <button type="button" onClick={addAgentModel}>
+                <Plus size={14} /> 添加模型
+              </button>
             )}
-            {isFetchingModels ? "正在获取" : "获取模型"}
-          </button>
+          </div>
         </div>
 
         {scenario.id === "claude" && (
@@ -257,62 +275,81 @@ export function ManagedProviderCoreForm({
           scenario.id === "openclaw" ||
           scenario.id === "hermes") && (
           <div className="vv-core-opencode-models">
+            <div className="vv-core-model-list-heading">
+              <span>模型 ID</span>
+              <span>显示名称（可选）</span>
+            </div>
             {agentModels.length === 0 ? (
-              <p className="vv-core-empty-models">暂不限制模型列表。</p>
+              <p className="vv-core-empty-models">
+                暂无模型配置。点击“添加模型”来配置可用模型。
+              </p>
             ) : (
-              agentModels.map((row) => (
-                <div key={row.rowId} className="vv-core-opencode-row">
-                  <div className="vv-core-opencode-model-id">
+              agentModels.map((row, index) => (
+                <div
+                  key={row.rowId}
+                  className={
+                    scenario.id === "openclaw" || scenario.id === "hermes"
+                      ? "vv-core-agent-model-card"
+                      : undefined
+                  }
+                >
+                  {(scenario.id === "openclaw" || scenario.id === "hermes") && (
+                    <span
+                      className={`vv-core-model-role ${index === 0 ? "is-primary" : ""}`}
+                    >
+                      {index === 0
+                        ? "默认模型"
+                        : scenario.id === "openclaw"
+                          ? "回退模型"
+                          : "备选模型"}
+                    </span>
+                  )}
+                  <div className="vv-core-opencode-row">
+                    <div className="vv-core-opencode-model-id">
+                      <input
+                        value={row.id}
+                        onChange={(event) =>
+                          updateAgentModel(row.rowId, "id", event.target.value)
+                        }
+                        placeholder="模型 ID"
+                        autoComplete="off"
+                      />
+                      {fetchedModels.length > 0 && (
+                        <ModelDropdown
+                          models={fetchedModels}
+                          onSelect={(id) =>
+                            updateAgentModel(row.rowId, "id", id)
+                          }
+                        />
+                      )}
+                    </div>
                     <input
-                      value={row.id}
+                      value={row.name}
                       onChange={(event) =>
-                        updateAgentModel(row.rowId, "id", event.target.value)
+                        updateAgentModel(row.rowId, "name", event.target.value)
                       }
-                      placeholder="模型 ID"
+                      placeholder="显示名称（可选）"
                       autoComplete="off"
                     />
-                    {fetchedModels.length > 0 && (
-                      <ModelDropdown
-                        models={fetchedModels}
-                        onSelect={(id) => updateAgentModel(row.rowId, "id", id)}
-                      />
-                    )}
+                    <button
+                      type="button"
+                      className="vv-core-opencode-remove"
+                      aria-label={`删除模型 ${row.id || "空白"}`}
+                      onClick={() => removeAgentModel(row.rowId)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                  <input
-                    value={row.name}
-                    onChange={(event) =>
-                      updateAgentModel(row.rowId, "name", event.target.value)
-                    }
-                    placeholder="显示名称（可选）"
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="vv-core-opencode-remove"
-                    aria-label={`删除模型 ${row.id || "空白"}`}
-                    onClick={() =>
-                      setAgentModels((current) =>
-                        current.filter((item) => item.rowId !== row.rowId),
-                      )
-                    }
-                  >
-                    <Trash2 size={14} />
-                  </button>
                 </div>
               ))
             )}
-            <button
-              type="button"
-              className="vv-core-add-model"
-              onClick={() =>
-                setAgentModels((current) => [
-                  ...current,
-                  { rowId: `new-${Date.now()}`, id: "", name: "" },
-                ])
-              }
-            >
-              <Plus size={14} /> 添加模型
-            </button>
+            {(scenario.id === "openclaw" || scenario.id === "hermes") &&
+              agentModels.length > 0 && (
+                <p className="vv-core-model-order-hint">
+                  列表第一项为默认模型，后续模型按顺序作为
+                  {scenario.id === "openclaw" ? "回退模型" : "备选模型"}。
+                </p>
+              )}
           </div>
         )}
       </div>

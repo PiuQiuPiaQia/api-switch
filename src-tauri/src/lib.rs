@@ -1150,6 +1150,7 @@ pub fn run() {
             commands::add_provider,
             commands::update_provider,
             commands::switch_provider,
+            commands::restore_official_configuration,
             commands::get_init_error,
             commands::open_app_config_folder,
             commands::set_window_theme,

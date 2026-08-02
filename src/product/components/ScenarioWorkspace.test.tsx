@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   checkForUpdates: vi.fn(),
   refreshEnvironment: vi.fn(),
   ensureTokens: vi.fn(),
+  restoreOfficialConfiguration: vi.fn(),
 }));
 
 vi.mock("@/lib/api/providers", () => ({
@@ -23,6 +24,12 @@ vi.mock("@/lib/api/settings", () => ({
   settingsApi: {
     getToolVersions: apiMocks.getToolVersions,
     runToolLifecycleAction: apiMocks.runToolLifecycleAction,
+  },
+}));
+
+vi.mock("../api", () => ({
+  newApiApi: {
+    restoreOfficialConfiguration: apiMocks.restoreOfficialConfiguration,
   },
 }));
 
@@ -87,10 +94,12 @@ function AutoProvisionHarness({
   initialBootstrap = bootstrapWithoutKey,
   ensuredBootstrap = bootstrapWithKey,
   initialSelectedGroupId,
+  scenarioId = "claude",
 }: {
   initialBootstrap?: NewApiBootstrap;
   ensuredBootstrap?: NewApiBootstrap;
   initialSelectedGroupId?: string;
+  scenarioId?: (typeof PRODUCT.scenarios)[number]["id"];
 }) {
   const [bootstrap, setBootstrap] = useState(initialBootstrap);
   const ensureTokens = useCallback(
@@ -104,7 +113,7 @@ function AutoProvisionHarness({
 
   return (
     <ScenarioWorkspace
-      scenario={PRODUCT.scenarios.find((item) => item.id === "claude")!}
+      scenario={PRODUCT.scenarios.find((item) => item.id === scenarioId)!}
       bootstrap={bootstrap}
       preview={false}
       environment={{ info: installedToolInfo, loading: false, error: null }}
@@ -127,6 +136,8 @@ describe("ScenarioWorkspace", () => {
     apiMocks.checkForUpdates.mockResolvedValue(installedToolInfo);
     apiMocks.refreshEnvironment.mockReset();
     apiMocks.refreshEnvironment.mockResolvedValue(installedToolInfo);
+    apiMocks.restoreOfficialConfiguration.mockReset();
+    apiMocks.restoreOfficialConfiguration.mockResolvedValue(undefined);
   });
 
   it("automatically provisions a missing group key and enables configuration", async () => {
@@ -235,6 +246,11 @@ describe("ScenarioWorkspace", () => {
     render(<AutoProvisionHarness initialBootstrap={bootstrapWithKey} />);
 
     await screen.findByRole("button", { name: "检测更新" });
+    const version = screen.getByText("2.1.0");
+    expect(version.closest(".vv-scenario-version")).toHaveTextContent(
+      "当前版本2.1.0",
+    );
+    expect(version.closest(".vv-page-layout--standard")).not.toBeNull();
     expect(apiMocks.getToolVersions).not.toHaveBeenCalled();
     expect(apiMocks.refreshEnvironment).not.toHaveBeenCalled();
   });
@@ -249,5 +265,46 @@ describe("ScenarioWorkspace", () => {
     );
     expect(apiMocks.refreshEnvironment).not.toHaveBeenCalled();
     expect(apiMocks.getToolVersions).not.toHaveBeenCalled();
+  });
+
+  it.each(PRODUCT.scenarios)(
+    "offers a native restore action for $name",
+    async (scenario) => {
+      render(
+        <AutoProvisionHarness
+          initialBootstrap={bootstrapWithKey}
+          scenarioId={scenario.id}
+        />,
+      );
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "恢复官方默认配置" }),
+      );
+
+      await waitFor(() =>
+        expect(apiMocks.restoreOfficialConfiguration).toHaveBeenCalledWith(
+          scenario.appId,
+        ),
+      );
+    },
+  );
+
+  it("keeps restore available when the account has no configurable groups", async () => {
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={{ ...bootstrapWithKey, groups: [] }}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "恢复官方默认配置" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.restoreOfficialConfiguration).toHaveBeenCalledWith(
+        "claude",
+      ),
+    );
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
   });
 });

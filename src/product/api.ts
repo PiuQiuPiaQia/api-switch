@@ -5,6 +5,7 @@ import type {
   NewApiInfoRoute,
   NewApiSession,
 } from "./types";
+import type { AppId } from "@/lib/api/types";
 
 export const newApiApi = {
   async beginOAuth(serverUrl: string): Promise<NewApiSession> {
@@ -33,6 +34,10 @@ export const newApiApi = {
 
   async ensureGroupTokens(groupId: string): Promise<NewApiBootstrap> {
     return await invoke("newapi_ensure_group_tokens", { groupId });
+  },
+
+  async restoreOfficialConfiguration(app: AppId): Promise<void> {
+    await invoke("restore_official_configuration", { app });
   },
 
   async testEndpoints(

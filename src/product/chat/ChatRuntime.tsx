@@ -5,12 +5,14 @@ import {
   AttachmentPrimitive,
   ComposerPrimitive,
   CompositeAttachmentAdapter,
+  ErrorPrimitive,
   MessagePrimitive,
   SimpleImageAttachmentAdapter,
   SimpleTextAttachmentAdapter,
   ThreadPrimitive,
   useAuiState,
   type AttachmentAdapter,
+  type EmptyMessagePartProps,
   type FileMessagePartProps,
   type ImageMessagePartProps,
   type ReasoningMessagePartProps,
@@ -25,6 +27,7 @@ import {
   ArrowDown,
   Bot,
   Brain,
+  CircleAlert,
   Copy,
   ExternalLink,
   FileText,
@@ -203,7 +206,15 @@ function ToolFallback({
   );
 }
 
-function EmptyPart() {
+export function shouldShowMessageLoading(
+  status: EmptyMessagePartProps["status"],
+): boolean {
+  return status.type === "running";
+}
+
+function EmptyPart({ status }: EmptyMessagePartProps) {
+  if (!shouldShowMessageLoading(status)) return null;
+
   return (
     <span className="vv-chat-message__loading">
       <i /> <i /> <i />
@@ -260,6 +271,11 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  const hasError = useAuiState((state) => {
+    const status = state.message.status;
+    return status?.type === "incomplete" && status.reason === "error";
+  });
+
   return (
     <MessagePrimitive.Root className="vv-chat-message vv-chat-message--assistant">
       <span className="vv-chat-message__avatar">
@@ -270,7 +286,13 @@ function AssistantMessage() {
         <div className="vv-chat-message__bubble">
           <MessagePrimitive.Parts components={MESSAGE_PARTS} />
           <MessagePrimitive.Error>
-            <span>消息生成失败，请重试。</span>
+            <div className="vv-chat-message__error" role="alert">
+              <CircleAlert size={15} aria-hidden />
+              <div className="vv-chat-message__error-content">
+                <strong>消息生成失败</strong>
+                <ErrorPrimitive.Message className="vv-chat-message__error-detail" />
+              </div>
+            </div>
           </MessagePrimitive.Error>
         </div>
         <ActionBarPrimitive.Root
@@ -282,8 +304,13 @@ function AssistantMessage() {
           <ActionBarPrimitive.Copy title="复制消息" aria-label="复制消息">
             <Copy size={13} />
           </ActionBarPrimitive.Copy>
-          <ActionBarPrimitive.Reload title="重新生成" aria-label="重新生成">
+          <ActionBarPrimitive.Reload
+            className={hasError ? "vv-chat-message__retry is-error" : undefined}
+            title="重新生成"
+            aria-label="重新生成"
+          >
             <RefreshCw size={13} />
+            {hasError && <span>重新生成</span>}
           </ActionBarPrimitive.Reload>
         </ActionBarPrimitive.Root>
       </div>

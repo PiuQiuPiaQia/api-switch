@@ -59,6 +59,12 @@ describe("InitializationPanel", () => {
 
     const first = render(panel());
     expect(await screen.findByText("默认线路")).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("heading", { name: "API 信息", level: 1 })
+        .closest(".vv-page-layout--standard"),
+    ).not.toBeNull();
+    expect(screen.queryByText("连接准备")).not.toBeInTheDocument();
     expect(apiMocks.getApiInfoRoutes).toHaveBeenCalledTimes(1);
     first.unmount();
 

@@ -13,7 +13,7 @@ import {
 import { PRODUCT } from "../config";
 import type { NewApiBootstrap, NewApiSession } from "../types";
 import { resolveAccountName } from "../userIdentity";
-import { PageHeading } from "./PageHeading";
+import { PageLayout } from "./PageLayout";
 
 interface AccountPageProps {
   session: NewApiSession;
@@ -70,25 +70,24 @@ export function AccountPage({
   const serviceUrl = globalBaseUrl || session.serverUrl;
 
   return (
-    <div className="vv-page vv-account-page">
-      <PageHeading
-        eyebrow="账号中心"
-        title="用户信息"
-        description="查看中转站账号、额度与当前桌面授权状态。"
-        icon={<UserRound size={20} strokeWidth={1.9} />}
-        accent="#3478c8"
-        actions={
-          <button
-            type="button"
-            className="vv-secondary-button"
-            onClick={onLogout}
-          >
-            <LogOut size={16} />
-            {preview ? "退出预览" : "退出登录"}
-          </button>
-        }
-      />
-
+    <PageLayout
+      className="vv-account-page"
+      width="narrow"
+      title="用户信息"
+      description="查看中转站账号、额度与当前桌面授权状态。"
+      icon={<UserRound size={20} strokeWidth={1.9} />}
+      accent="#3478c8"
+      actions={
+        <button
+          type="button"
+          className="vv-secondary-button"
+          onClick={onLogout}
+        >
+          <LogOut size={16} />
+          {preview ? "退出预览" : "退出登录"}
+        </button>
+      }
+    >
       <section className="vv-account-hero">
         <div className="vv-account-avatar">
           {accountName.slice(0, 1).toUpperCase()}
@@ -195,6 +194,6 @@ export function AccountPage({
           </div>
         </dl>
       </section>
-    </div>
+    </PageLayout>
   );
 }

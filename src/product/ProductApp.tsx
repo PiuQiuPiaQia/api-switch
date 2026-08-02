@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -12,7 +10,6 @@ import {
   Cloud,
   Gauge,
   Loader2,
-  MessageSquareText,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -45,11 +42,7 @@ import { ScenarioWorkspace } from "./components/ScenarioWorkspace";
 import { AccountPage } from "./components/AccountPage";
 import "./product.css";
 
-type ActivePage = ProductScenario["id"] | "initialize" | "chat" | "account";
-
-const ChatPage = lazy(async () => ({
-  default: (await import("./chat/ChatPage")).ChatPage,
-}));
+type ActivePage = ProductScenario["id"] | "initialize" | "account";
 
 const TOOL_CHECK_TIMEOUT_MS = 12_000;
 
@@ -401,16 +394,6 @@ export default function ProductApp() {
             </i>
             <span>初始化</span>
           </button>
-          <button
-            type="button"
-            className={activePage === "chat" ? "is-active" : ""}
-            onClick={() => setActivePage("chat")}
-          >
-            <i style={{ "--nav-accent": "#3f8fcd" } as React.CSSProperties}>
-              <MessageSquareText size={18} strokeWidth={1.9} />
-            </i>
-            <span>对话</span>
-          </button>
           <span className="vv-sidebar__label">AI工具</span>
           {PRODUCT.scenarios.map((scenario) => (
             <button
@@ -474,11 +457,7 @@ export default function ProductApp() {
           )}
         </div>
 
-        <div
-          className={`vv-main__scroll ${
-            activePage === "chat" ? "vv-main__scroll--chat" : ""
-          }`}
-        >
+        <div className="vv-main__scroll">
           {dataLoading && !bootstrap ? (
             <AppLoading />
           ) : dataError && !bootstrap ? (
@@ -515,14 +494,6 @@ export default function ProductApp() {
               globalBaseUrl={globalBaseUrl}
               onLogout={() => void handleLogout()}
             />
-          ) : bootstrap && activePage === "chat" ? (
-            <Suspense fallback={<AppLoading />}>
-              <ChatPage
-                bootstrap={bootstrap}
-                preview={preview}
-                onEnsureTokens={ensureTokens}
-              />
-            </Suspense>
           ) : bootstrap && activeScenario ? (
             <ScenarioWorkspace
               key={activeScenario.id}
