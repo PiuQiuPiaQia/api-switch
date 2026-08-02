@@ -21,8 +21,10 @@ import type {
   ProductScenario,
   ScenarioId,
   ToolEnvironmentState,
+  ToolEnvironmentSnapshot,
   ToolVersionInfo,
 } from "./types";
+import { isToolEnvironmentReady } from "./toolEnvironment";
 import { BrandMark } from "./components/BrandMark";
 import { LoginScreen } from "./components/LoginScreen";
 import { InitializationPanel } from "./components/InitializationPanel";
@@ -42,6 +44,7 @@ function createInitialToolEnvironments(): Record<
     (states, scenario) => {
       states[scenario.id] = {
         info: null,
+        installationReport: null,
         loading: scenario.tool !== null,
         error: null,
       };
@@ -96,7 +99,7 @@ export default function VvCodeApp() {
   const tokenRequestsRef = useRef(new Map<string, Promise<NewApiBootstrap>>());
 
   const refreshToolEnvironment = useCallback(
-    async (scenarioId: ScenarioId): Promise<ToolVersionInfo> => {
+    async (scenarioId: ScenarioId): Promise<ToolEnvironmentSnapshot> => {
       const scenario = PRODUCT.scenarios.find((item) => item.id === scenarioId);
       if (!scenario) throw new Error("未找到对应的工具配置");
 
@@ -112,9 +115,14 @@ export default function VvCodeApp() {
         };
         setToolEnvironments((current) => ({
           ...current,
-          [scenarioId]: { info, loading: false, error: null },
+          [scenarioId]: {
+            info,
+            installationReport: null,
+            loading: false,
+            error: null,
+          },
         }));
-        return info;
+        return { info, installationReport: null };
       }
 
       setToolEnvironments((current) => ({
@@ -127,16 +135,27 @@ export default function VvCodeApp() {
       }));
 
       try {
-        const [result] = await withToolCheckTimeout(
-          settingsApi.getToolVersions([scenario.tool]),
+        const [versions, reports] = await withToolCheckTimeout(
+          Promise.all([
+            settingsApi.getToolVersions([scenario.tool]),
+            settingsApi.probeToolInstallations([scenario.tool]),
+          ]),
         );
+        const [result] = versions;
+        const [installationReport] = reports;
         if (!result) throw new Error("未获得更新检测结果");
+        if (!installationReport) throw new Error("未获得工具安装分布");
         const info = result as ToolVersionInfo;
         setToolEnvironments((current) => ({
           ...current,
-          [scenarioId]: { info, loading: false, error: null },
+          [scenarioId]: {
+            info,
+            installationReport,
+            loading: false,
+            error: null,
+          },
         }));
-        return info;
+        return { info, installationReport };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setToolEnvironments((current) => ({
@@ -156,11 +175,14 @@ export default function VvCodeApp() {
   const checkToolUpdate = useCallback(
     async (scenarioId: ScenarioId): Promise<ToolVersionInfo> => {
       const scenario = PRODUCT.scenarios.find((item) => item.id === scenarioId);
-      const currentInfo = toolEnvironments[scenarioId].info;
+      const currentEnvironment = toolEnvironments[scenarioId];
+      const currentInfo = currentEnvironment.info;
+      const currentVersion = currentInfo?.version;
       if (
         !scenario?.tool ||
-        !currentInfo?.version ||
-        currentInfo.installed_but_broken
+        !currentInfo ||
+        !currentVersion ||
+        !isToolEnvironmentReady(currentEnvironment)
       ) {
         throw new Error("运行环境尚未就绪，请先在下方完成初始化");
       }
@@ -177,7 +199,7 @@ export default function VvCodeApp() {
       try {
         const [result] = await withToolCheckTimeout(
           settingsApi.getLatestToolVersions([scenario.tool], {
-            [scenario.tool]: currentInfo.version,
+            [scenario.tool]: currentVersion,
           }),
         );
         if (!result?.latest_version) {
@@ -189,7 +211,12 @@ export default function VvCodeApp() {
         };
         setToolEnvironments((current) => ({
           ...current,
-          [scenarioId]: { info, loading: false, error: null },
+          [scenarioId]: {
+            ...current[scenarioId],
+            info,
+            loading: false,
+            error: null,
+          },
         }));
         return info;
       } catch (error) {

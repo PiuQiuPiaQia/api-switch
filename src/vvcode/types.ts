@@ -1,4 +1,5 @@
 import type { AppId } from "@/lib/api";
+import type { ToolInstallationReport } from "@/lib/api/settings";
 
 export type ScenarioId =
   | "claude"
@@ -119,6 +120,12 @@ export interface ToolVersionInfo {
 
 export interface ToolEnvironmentState {
   info: ToolVersionInfo | null;
+  installationReport: ToolInstallationReport | null;
   loading: boolean;
   error: string | null;
 }
+
+export type ToolEnvironmentSnapshot = Pick<
+  ToolEnvironmentState,
+  "info" | "installationReport"
+>;

@@ -7,7 +7,9 @@
 pub(crate) mod edition;
 mod newapi;
 mod restore;
+mod tool_environment;
 pub(crate) mod tray;
 
 pub use newapi::*;
 pub use restore::*;
+pub use tool_environment::*;

@@ -1,9 +1,14 @@
 import { useCallback, useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ToolInstallationReport } from "@/lib/api/settings";
 import { PRODUCT } from "../config";
 import { managedProviderName } from "../configuration";
-import type { NewApiBootstrap, ToolVersionInfo } from "../types";
+import type {
+  NewApiBootstrap,
+  ToolEnvironmentState,
+  ToolVersionInfo,
+} from "../types";
 import { ScenarioWorkspace } from "./ScenarioWorkspace";
 
 const apiMocks = vi.hoisted(() => ({
@@ -14,6 +19,7 @@ const apiMocks = vi.hoisted(() => ({
   refreshEnvironment: vi.fn(),
   ensureTokens: vi.fn(),
   restoreOfficialConfiguration: vi.fn(),
+  repairToolCommand: vi.fn(),
 }));
 
 vi.mock("@/lib/api/providers", () => ({
@@ -33,6 +39,12 @@ vi.mock("../api", () => ({
   },
 }));
 
+vi.mock("../toolEnvironmentApi", () => ({
+  toolEnvironmentApi: {
+    repairCommand: apiMocks.repairToolCommand,
+  },
+}));
+
 const installedToolInfo: ToolVersionInfo = {
   name: "Claude Code",
   version: "2.1.0",
@@ -41,6 +53,31 @@ const installedToolInfo: ToolVersionInfo = {
   installed_but_broken: false,
   env_type: "macos",
   wsl_distro: null,
+};
+
+const installedToolReport: ToolInstallationReport = {
+  tool: "claude",
+  installs: [
+    {
+      path: "/Users/tester/.local/bin/claude",
+      version: "2.1.0",
+      runnable: true,
+      error: null,
+      source: "system",
+      is_path_default: true,
+    },
+  ],
+  is_conflict: false,
+  needs_confirmation: false,
+  command: "/Users/tester/.local/bin/claude update",
+  anchored: true,
+};
+
+const readyEnvironment: ToolEnvironmentState = {
+  info: installedToolInfo,
+  installationReport: installedToolReport,
+  loading: false,
+  error: null,
 };
 
 const bootstrapWithoutKey: NewApiBootstrap = {
@@ -116,7 +153,7 @@ function AutoProvisionHarness({
       scenario={PRODUCT.scenarios.find((item) => item.id === scenarioId)!}
       bootstrap={bootstrap}
       preview={false}
-      environment={{ info: installedToolInfo, loading: false, error: null }}
+      environment={readyEnvironment}
       onCheckForUpdates={apiMocks.checkForUpdates}
       onRefreshEnvironment={apiMocks.refreshEnvironment}
       onEnsureTokens={ensureTokens}
@@ -135,9 +172,19 @@ describe("ScenarioWorkspace", () => {
     apiMocks.checkForUpdates.mockReset();
     apiMocks.checkForUpdates.mockResolvedValue(installedToolInfo);
     apiMocks.refreshEnvironment.mockReset();
-    apiMocks.refreshEnvironment.mockResolvedValue(installedToolInfo);
+    apiMocks.refreshEnvironment.mockResolvedValue({
+      info: installedToolInfo,
+      installationReport: installedToolReport,
+    });
     apiMocks.restoreOfficialConfiguration.mockReset();
     apiMocks.restoreOfficialConfiguration.mockResolvedValue(undefined);
+    apiMocks.repairToolCommand.mockReset();
+    apiMocks.repairToolCommand.mockResolvedValue({
+      launcher_path: "/Users/tester/.local/bin/claude",
+      installation_path:
+        "/Users/tester/.nvm/versions/node/v20/bin/claude",
+      changed: true,
+    });
   });
 
   it("automatically provisions a missing group key and enables configuration", async () => {
@@ -285,6 +332,146 @@ describe("ScenarioWorkspace", () => {
     await waitFor(() =>
       expect(apiMocks.getProviders).toHaveBeenCalledWith("claude-desktop"),
     );
+  });
+
+  it.each(PRODUCT.scenarios.filter((scenario) => scenario.tool))(
+    "offers one-click command repair for $name when its CLI is outside PATH",
+    async (scenario) => {
+      const hiddenPath = `/Users/tester/.nvm/versions/node/v20/bin/${scenario.tool}`;
+      const hiddenEnvironment: ToolEnvironmentState = {
+        info: { ...installedToolInfo, name: scenario.name },
+        installationReport: {
+          ...installedToolReport,
+          tool: scenario.tool!,
+          installs: [
+            {
+              ...installedToolReport.installs[0],
+              path: hiddenPath,
+              source: "nvm",
+              is_path_default: false,
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+      };
+
+      render(
+        <ScenarioWorkspace
+          scenario={scenario}
+          bootstrap={bootstrapWithKey}
+          preview={false}
+          environment={hiddenEnvironment}
+          onCheckForUpdates={apiMocks.checkForUpdates}
+          onRefreshEnvironment={apiMocks.refreshEnvironment}
+          onEnsureTokens={apiMocks.ensureTokens}
+        />,
+      );
+
+      expect(
+        await screen.findByText(
+          `${scenario.name} 已安装，只差连接终端命令`,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/无需重装或手动修改 PATH/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "应用配置" })).toBeNull();
+      expect(apiMocks.getProviders).not.toHaveBeenCalled();
+      expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
+
+      apiMocks.repairToolCommand.mockResolvedValueOnce({
+        launcher_path: `/Users/tester/.local/bin/${scenario.tool}`,
+        installation_path: hiddenPath,
+        changed: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "一键修复" }));
+      await waitFor(() =>
+        expect(apiMocks.repairToolCommand).toHaveBeenCalledWith(scenario.tool),
+      );
+      await waitFor(() =>
+        expect(apiMocks.refreshEnvironment).toHaveBeenCalledTimes(1),
+      );
+      expect(apiMocks.runToolLifecycleAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("automatically repairs a hidden command after installing a CLI", async () => {
+    const scenario = PRODUCT.scenarios.find((item) => item.id === "gemini")!;
+    const hiddenEnvironment: ToolEnvironmentState = {
+      info: {
+        ...installedToolInfo,
+        name: scenario.name,
+      },
+      installationReport: {
+        ...installedToolReport,
+        tool: "gemini",
+        installs: [
+          {
+            ...installedToolReport.installs[0],
+            path: "/Users/tester/.nvm/versions/node/v20/bin/gemini",
+            is_path_default: false,
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+    };
+    const missingEnvironment: ToolEnvironmentState = {
+      info: {
+        ...installedToolInfo,
+        name: scenario.name,
+        version: null,
+      },
+      installationReport: {
+        ...installedToolReport,
+        tool: "gemini",
+        installs: [],
+      },
+      loading: false,
+      error: null,
+    };
+    apiMocks.runToolLifecycleAction.mockResolvedValue(undefined);
+    apiMocks.refreshEnvironment
+      .mockResolvedValueOnce(hiddenEnvironment)
+      .mockResolvedValueOnce({
+        info: { ...installedToolInfo, name: scenario.name },
+        installationReport: {
+          ...installedToolReport,
+          tool: "gemini",
+          installs: [
+            {
+              ...installedToolReport.installs[0],
+              path: "/Users/tester/.local/bin/gemini",
+            },
+          ],
+        },
+      });
+
+    render(
+      <ScenarioWorkspace
+        scenario={scenario}
+        bootstrap={bootstrapWithKey}
+        preview={false}
+        environment={missingEnvironment}
+        onCheckForUpdates={apiMocks.checkForUpdates}
+        onRefreshEnvironment={apiMocks.refreshEnvironment}
+        onEnsureTokens={apiMocks.ensureTokens}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "初始化环境" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.runToolLifecycleAction).toHaveBeenCalledWith(
+        ["gemini"],
+        "install",
+      ),
+    );
+    await waitFor(() =>
+      expect(apiMocks.repairToolCommand).toHaveBeenCalledWith("gemini"),
+    );
+    expect(apiMocks.refreshEnvironment).toHaveBeenCalledTimes(2);
   });
 
   it.each(PRODUCT.scenarios)(

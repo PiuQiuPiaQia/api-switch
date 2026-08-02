@@ -1851,17 +1851,17 @@ fn scan_cli_version(tool: &str) -> ShellProbe {
 #[derive(Debug, serde::Serialize)]
 pub struct ToolInstallation {
     /// 候选入口路径（用户实际在 PATH 里看到/输入的那个，未解析软链）。
-    path: String,
+    pub(crate) path: String,
     /// `--version` 成功时解析出的版本号。
     version: Option<String>,
     /// `--version` 是否 exit 0（装了且能在当前环境跑起来）。
-    runnable: bool,
+    pub(crate) runnable: bool,
     /// 跑不起来时的诊断信息末尾若干行。
     error: Option<String>,
     /// 由路径前缀推断的安装来源（nvm/homebrew/...），驱动 UI 徽章。
     source: String,
     /// 是否为 PATH 解析到的那处（= 命令行默认，也是升级会作用的目标）。
-    is_path_default: bool,
+    pub(crate) is_path_default: bool,
     /// canonicalize 解析后的真身路径(brew 形如 `Cellar/<formula>/...`、claude 原生形如
     /// `~/.local/share/claude/versions/...`),用于 `anchored_command_from_paths` 的真身
     /// 判定。`enumerate_tool_installations` 已经为去重算过一次,这里复用避免上游
@@ -1964,7 +1964,7 @@ fn merge_path_segments(primary: &str, extra: &str) -> String {
 ///
 /// 解析不到时返回 `None`，调用方保持原有行为（不注入），不引入新的失败模式。
 #[cfg(not(target_os = "windows"))]
-fn login_shell_path() -> Option<String> {
+pub(crate) fn login_shell_path() -> Option<String> {
     use std::process::Command;
     let shell = std::env::var("SHELL")
         .ok()
@@ -2034,7 +2034,7 @@ fn resolve_path_default(tool: &str) -> Option<std::path::PathBuf> {
 /// 枚举工具在系统中的所有安装（不短路）。与 `scan_cli_version` 共用
 /// `build_tool_search_paths`，但不在首个命中处停止——而是对每个去重后的真实
 /// 可执行文件都跑一次 `--version`，从而能发现"升级写入 A 处、PATH 实际用 B 处"。
-fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
+pub(crate) fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
     #[cfg(not(target_os = "windows"))]
     use std::process::Command;
 

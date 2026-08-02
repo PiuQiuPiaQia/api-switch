@@ -1149,6 +1149,7 @@ pub fn run() {
             commands::update_provider,
             commands::switch_provider,
             vvcode::restore_official_configuration,
+            vvcode::vvcode_repair_tool_command,
             commands::get_init_error,
             commands::open_app_config_folder,
             commands::set_window_theme,

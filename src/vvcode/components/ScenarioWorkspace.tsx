@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   CircleDollarSign,
   Download,
+  Link2,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -39,12 +40,19 @@ import {
 } from "../configuration";
 import { PRODUCT } from "../config";
 import { newApiApi } from "../api";
+import { toolEnvironmentApi } from "../toolEnvironmentApi";
 import type {
   NewApiBootstrap,
   ProductScenario,
   ToolEnvironmentState,
+  ToolEnvironmentSnapshot,
   ToolVersionInfo,
 } from "../types";
+import {
+  hasToolPathMismatch,
+  isToolEnvironmentReady,
+  toolPathMismatchDescription,
+} from "../toolEnvironment";
 import { ManagedProviderCoreForm } from "./ManagedProviderCoreForm";
 import { PageLayout } from "./PageLayout";
 
@@ -55,7 +63,7 @@ interface ScenarioWorkspaceProps {
   globalBaseUrl?: string;
   environment: ToolEnvironmentState;
   onCheckForUpdates: () => Promise<ToolVersionInfo>;
-  onRefreshEnvironment: () => Promise<ToolVersionInfo>;
+  onRefreshEnvironment: () => Promise<ToolEnvironmentSnapshot>;
   onEnsureTokens: (groupId: string) => Promise<NewApiBootstrap>;
   initialSelectedGroupId?: string;
   onSelectedGroupChange?: (groupId: string) => void;
@@ -68,6 +76,7 @@ interface KeyPreparationState {
 }
 
 type ToolLifecycleAction = "install" | "update";
+type ToolAction = ToolLifecycleAction | "repair";
 
 function ratioLabel(value: string): string {
   if (!value) return "1×";
@@ -78,47 +87,61 @@ function ratioLabel(value: string): string {
 interface EnvironmentGateProps {
   scenario: ProductScenario;
   toolInfo: ToolVersionInfo | null;
+  environment: ToolEnvironmentState;
   loading: boolean;
   error: string | null;
-  action: ToolLifecycleAction | null;
+  action: ToolAction | null;
   onDetect: () => void;
   onInitialize: () => void;
+  onRepair: () => void;
 }
 
 function EnvironmentGate({
   scenario,
   toolInfo,
+  environment,
   loading,
   error,
   action,
   onDetect,
   onInitialize,
+  onRepair,
 }: EnvironmentGateProps) {
   const knownUnavailable = Boolean(toolInfo) && !toolInfo?.version;
   const needsRepair = Boolean(toolInfo?.installed_but_broken);
+  const pathMismatch = hasToolPathMismatch(environment);
   const initializing = action === "install";
-  const checking = loading && !initializing;
+  const repairing = action === "repair";
+  const checking = loading && !initializing && !repairing;
   const canInitialize = knownUnavailable || needsRepair;
 
   const title = checking
     ? `正在检测 ${scenario.name} 环境`
     : initializing
       ? `正在初始化 ${scenario.name}`
-      : error && !toolInfo
-        ? "暂时无法确认本机环境"
-        : needsRepair
-          ? `${scenario.name} 环境需要修复`
-          : `先初始化 ${scenario.name} 环境`;
+      : repairing
+        ? `正在修复 ${scenario.name} 命令`
+        : error && !toolInfo
+          ? "暂时无法确认本机环境"
+          : needsRepair
+            ? `${scenario.name} 环境需要修复`
+            : pathMismatch
+              ? `${scenario.name} 已安装，只差连接终端命令`
+              : `先初始化 ${scenario.name} 环境`;
 
   const description = checking
     ? "正在读取本机客户端状态。"
     : initializing
       ? "正在安装并校验客户端，请稍候。"
-      : error && !toolInfo
-        ? "无法确认环境状态，重试后再继续。"
-        : needsRepair
-          ? "客户端无法正常启动，重新初始化后再继续。"
-          : `本机尚未安装 ${scenario.name}，初始化后即可配置分组和模型。`;
+      : repairing
+        ? "正在连接已发现的客户端安装，无需重新下载。"
+        : error && !toolInfo
+          ? "无法确认环境状态，重试后再继续。"
+          : needsRepair
+            ? "客户端无法正常启动，重新初始化后再继续。"
+            : pathMismatch
+              ? toolPathMismatchDescription(scenario.name, environment)
+              : `本机尚未安装 ${scenario.name}，初始化后即可配置分组和模型。`;
 
   return (
     <section
@@ -127,7 +150,7 @@ function EnvironmentGate({
     >
       <div className="vv-environment-gate__content">
         <span className="vv-environment-gate__icon">
-          {checking || initializing ? (
+          {checking || initializing || repairing ? (
             <Loader2 className="vv-spin" size={34} />
           ) : error && !toolInfo ? (
             <AlertTriangle size={34} />
@@ -138,7 +161,7 @@ function EnvironmentGate({
         <h2>{title}</h2>
         <p>{description}</p>
 
-        {error && !checking && !initializing && (
+        {error && !checking && !initializing && !repairing && (
           <div className="vv-environment-gate__error">
             <AlertTriangle size={14} />
             <span>{error}</span>
@@ -148,11 +171,15 @@ function EnvironmentGate({
         <button
           type="button"
           className="vv-primary-button vv-environment-gate__action"
-          disabled={checking || initializing}
-          onClick={canInitialize ? onInitialize : onDetect}
+          disabled={checking || initializing || repairing}
+          onClick={
+            pathMismatch ? onRepair : canInitialize ? onInitialize : onDetect
+          }
         >
-          {checking || initializing ? (
+          {checking || initializing || repairing ? (
             <Loader2 className="vv-spin" size={17} />
+          ) : pathMismatch ? (
+            <Link2 size={17} />
           ) : canInitialize ? (
             <Download size={17} />
           ) : (
@@ -162,11 +189,15 @@ function EnvironmentGate({
             ? "正在检测"
             : initializing
               ? "正在初始化"
-              : canInitialize
-                ? needsRepair
-                  ? "重新初始化环境"
-                  : "初始化环境"
-                : "重新检测环境"}
+              : repairing
+                ? "正在修复"
+                : pathMismatch
+                  ? "一键修复"
+                  : canInitialize
+                    ? needsRepair
+                      ? "重新初始化环境"
+                      : "初始化环境"
+                    : "重新检测环境"}
         </button>
       </div>
     </section>
@@ -190,9 +221,7 @@ export function ScenarioWorkspace({
   )
     ? initialSelectedGroupId
     : "";
-  const [toolAction, setToolAction] = useState<ToolLifecycleAction | null>(
-    null,
-  );
+  const [toolAction, setToolAction] = useState<ToolAction | null>(null);
   const [groupSelectorOpen, setGroupSelectorOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState(
     cachedGroupId ||
@@ -220,8 +249,8 @@ export function ScenarioWorkspace({
   } = environment;
   const hasToolEnvironment = scenario.tool !== null;
   const environmentReady =
-    !hasToolEnvironment ||
-    (Boolean(toolInfo?.version) && !toolInfo?.installed_but_broken);
+    !hasToolEnvironment || isToolEnvironmentReady(environment);
+  const pathMismatch = hasToolPathMismatch(environment);
   const updateAvailable = hasToolEnvironment
     ? isUpdateAvailable(toolInfo?.version, toolInfo?.latest_version)
     : false;
@@ -252,6 +281,32 @@ export function ScenarioWorkspace({
     }
   }, [onRefreshEnvironment]);
 
+  const repairToolCommand = useCallback(async () => {
+    if (!scenario.tool) return;
+    if (preview) {
+      toast.info("当前为开发预览模式，不会修改本机环境");
+      return;
+    }
+
+    setToolAction("repair");
+    try {
+      const result = await toolEnvironmentApi.repairCommand(scenario.tool);
+      const next = await onRefreshEnvironment();
+      if (!isToolEnvironmentReady(next)) {
+        throw new Error("兼容命令已创建，但当前终端仍无法运行，请重新打开终端后再试");
+      }
+      toast.success(`${scenario.name} 命令已修复`, {
+        description: `现在可直接运行 ${scenario.tool}（${result.launcher_path}）`,
+      });
+    } catch (error) {
+      toast.error("自动修复失败", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setToolAction(null);
+    }
+  }, [onRefreshEnvironment, preview, scenario.name, scenario.tool]);
+
   const runToolAction = useCallback(
     async (action: ToolLifecycleAction) => {
       if (!scenario.tool) return;
@@ -263,13 +318,17 @@ export function ScenarioWorkspace({
       setToolAction(action);
       try {
         await settingsApi.runToolLifecycleAction([scenario.tool], action);
-        const next = await onRefreshEnvironment();
-        const nextVersion = next?.version;
+        let next = await onRefreshEnvironment();
+        if (hasToolPathMismatch(next)) {
+          await toolEnvironmentApi.repairCommand(scenario.tool);
+          next = await onRefreshEnvironment();
+        }
+        const nextVersion = next.info?.version;
         const actionCompleted =
           Boolean(nextVersion) &&
-          !next?.installed_but_broken &&
+          isToolEnvironmentReady(next) &&
           (action === "install" ||
-            !isUpdateAvailable(nextVersion, next?.latest_version));
+            !isUpdateAvailable(nextVersion, next.info?.latest_version));
         if (actionCompleted) {
           toast.success(
             action === "install"
@@ -277,7 +336,11 @@ export function ScenarioWorkspace({
               : `${scenario.name} 已更新至 ${nextVersion}`,
           );
         } else {
-          toast.warning("命令已执行，但环境仍不可用，请重新检测或检查安装日志");
+          toast.warning("命令已执行，但环境仍不可用", {
+            description: hasToolPathMismatch(next)
+              ? toolPathMismatchDescription(scenario.name, next)
+              : next.info?.error || "请重新检测或检查安装日志。",
+          });
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -463,6 +526,10 @@ export function ScenarioWorkspace({
 
   const handleConfigure = async (configuredProvider: Provider) => {
     if (!selectedGroup || !managedProvider) return;
+    if (!environmentReady) {
+      toast.error("运行环境尚未就绪，未写入本机配置");
+      return;
+    }
     if (preview) {
       toast.info("当前为开发预览模式，不会写入本机配置");
       return;
@@ -525,6 +592,9 @@ export function ScenarioWorkspace({
   const headerTitle =
     toolError ??
     (toolInfo?.installed_but_broken ? toolInfo.error : null) ??
+    (pathMismatch
+      ? toolPathMismatchDescription(scenario.name, environment)
+      : null) ??
     (headerAction === "update"
       ? `发现新版本 ${toolInfo?.latest_version ?? ""}`
       : toolInfo?.version
@@ -532,11 +602,13 @@ export function ScenarioWorkspace({
         : `${scenario.name} 尚未初始化，可在下方完成安装`);
   const currentVersion = toolLoading
     ? "检测中"
-    : toolInfo?.version
-      ? toolInfo.version
-      : toolError
-        ? "检测失败"
-        : "未安装";
+    : pathMismatch
+      ? "PATH 不可用"
+      : toolInfo?.version
+        ? toolInfo.version
+        : toolError
+          ? "检测失败"
+          : "未安装";
 
   return (
     <PageLayout
@@ -774,6 +846,7 @@ export function ScenarioWorkspace({
         <EnvironmentGate
           scenario={scenario}
           toolInfo={toolInfo}
+          environment={environment}
           loading={toolLoading}
           error={
             toolError ??
@@ -782,6 +855,7 @@ export function ScenarioWorkspace({
           action={toolAction}
           onDetect={() => void retryEnvironmentCheck()}
           onInitialize={() => void runToolAction("install")}
+          onRepair={() => void repairToolCommand()}
         />
       )}
     </PageLayout>
