@@ -34,71 +34,30 @@ const cargoBin = join(homedir(), ".cargo", "bin");
 const pathKey =
   Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 
-function hasEnv(name) {
-  return Boolean(env[name]?.trim());
-}
-
 if (existsSync(cargoBin)) {
   env[pathKey] = `${cargoBin}${delimiter}${env[pathKey] ?? ""}`;
 }
 
 if (platform === "darwin") {
-  const notarizationKeys = [
+  // Pre-release builds intentionally use an ad-hoc signature so contributors
+  // can package VV Code without an Apple Developer account.
+  env.APPLE_SIGNING_IDENTITY = "-";
+
+  for (const key of [
     "APPLE_ID",
     "APPLE_PASSWORD",
     "APPLE_TEAM_ID",
     "APPLE_API_ISSUER",
     "APPLE_API_KEY",
     "APPLE_API_KEY_PATH",
-  ];
-  const appleIdKeys = ["APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"];
-  const apiKeyKeys = [
-    "APPLE_API_ISSUER",
-    "APPLE_API_KEY",
-    "APPLE_API_KEY_PATH",
-  ];
-  const hasDeveloperId =
-    hasEnv("APPLE_SIGNING_IDENTITY") &&
-    env.APPLE_SIGNING_IDENTITY.trim() !== "-";
-  const hasAppleIdCredentials = appleIdKeys.every(hasEnv);
-  const hasApiKeyCredentials = apiKeyKeys.every(hasEnv);
-  const hasPartialCredentials =
-    notarizationKeys.some(hasEnv) &&
-    !hasAppleIdCredentials &&
-    !hasApiKeyCredentials;
-
-  if (hasDeveloperId && hasPartialCredentials) {
-    console.error(
-      "Incomplete Apple notarization credentials. Provide APPLE_ID, " +
-        "APPLE_PASSWORD and APPLE_TEAM_ID, or the complete App Store " +
-        "Connect API credential set.",
-    );
-    process.exit(1);
-  }
-
-  if (hasDeveloperId && !hasAppleIdCredentials && !hasApiKeyCredentials) {
-    console.error(
-      "Developer ID beta builds must also provide Apple notarization credentials.",
-    );
-    process.exit(1);
-  }
-
-  if (!hasDeveloperId) {
-    // Local builds without a Developer ID remain structurally signed for Apple
-    // Silicon, but CI release artifacts must use the signed path below.
-    env.APPLE_SIGNING_IDENTITY = "-";
-    for (const key of notarizationKeys) delete env[key];
+  ]) {
+    delete env[key];
   }
 }
 
-const macDistributionLabel =
-  env.APPLE_SIGNING_IDENTITY === "-"
-    ? "macOS (ad-hoc signed local build)"
-    : "macOS (Developer ID signed and notarized)";
-
 console.log(
   `Building VV Code beta package for ${
-    platform === "darwin" ? macDistributionLabel : "Windows (unsigned)"
+    platform === "darwin" ? "macOS (ad-hoc signed)" : "Windows (unsigned)"
   }...`,
 );
 
