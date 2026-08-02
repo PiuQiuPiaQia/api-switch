@@ -4,13 +4,25 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 const platform = process.platform;
-const forwardedArgs = process.argv.slice(2);
-const pnpm = platform === "win32" ? "pnpm.cmd" : "pnpm";
+const rawArgs = process.argv.slice(2);
+const forwardedArgs = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
+const tauriCli = join(
+  process.cwd(),
+  "node_modules",
+  "@tauri-apps",
+  "cli",
+  "tauri.js",
+);
 
 if (platform !== "darwin" && platform !== "win32") {
   console.error(
     "Internal desktop packages can only be built on macOS or Windows.",
   );
+  process.exit(1);
+}
+
+if (!existsSync(tauriCli)) {
+  console.error("Tauri CLI is missing. Run pnpm install before packaging.");
   process.exit(1);
 }
 
@@ -46,8 +58,8 @@ console.log(
 );
 
 const result = spawnSync(
-  pnpm,
-  ["tauri", "build", "--bundles", bundles, ...forwardedArgs],
+  process.execPath,
+  [tauriCli, "build", "--bundles", bundles, ...forwardedArgs],
   {
     env,
     stdio: "inherit",
