@@ -28,6 +28,10 @@ if (!existsSync(tauriCli)) {
 
 const env = { ...process.env };
 const bundles = platform === "darwin" ? "app,dmg" : "msi,nsis";
+const internalConfig =
+  platform === "win32"
+    ? JSON.stringify({ bundle: { windows: { wix: { template: null } } } })
+    : null;
 const cargoBin = join(homedir(), ".cargo", "bin");
 const pathKey =
   Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
@@ -61,7 +65,14 @@ console.log(
 
 const result = spawnSync(
   process.execPath,
-  [tauriCli, "build", "--bundles", bundles, ...forwardedArgs],
+  [
+    tauriCli,
+    "build",
+    "--bundles",
+    bundles,
+    ...(internalConfig ? ["--config", internalConfig] : []),
+    ...forwardedArgs,
+  ],
   {
     env,
     stdio: "inherit",
