@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -26,10 +26,20 @@ if (!existsSync(tauriCli)) {
 
 const env = { ...process.env };
 const bundles = platform === "darwin" ? "app,dmg" : "msi,nsis";
-const betaConfig =
-  platform === "win32"
-    ? JSON.stringify({ bundle: { windows: { wix: { template: null } } } })
-    : null;
+const packageVersion = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8"),
+).version;
+const buildVersion =
+  env.VV_CODE_BUILD_VERSION ||
+  `${packageVersion}-beta.${env.GITHUB_RUN_NUMBER || "0"}`;
+const createUpdaterArtifacts = Boolean(env.TAURI_SIGNING_PRIVATE_KEY);
+const betaConfig = JSON.stringify({
+  version: buildVersion,
+  bundle: {
+    createUpdaterArtifacts,
+    ...(platform === "win32" ? { windows: { wix: { template: null } } } : {}),
+  },
+});
 const cargoBin = join(homedir(), ".cargo", "bin");
 const pathKey =
   Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
@@ -56,9 +66,9 @@ if (platform === "darwin") {
 }
 
 console.log(
-  `Building VV Code beta package for ${
+  `Building VV Code ${buildVersion} beta package for ${
     platform === "darwin" ? "macOS (ad-hoc signed)" : "Windows (unsigned)"
-  }...`,
+  }${createUpdaterArtifacts ? " with signed updater artifacts" : ""}...`,
 );
 
 const result = spawnSync(
@@ -68,7 +78,8 @@ const result = spawnSync(
     "build",
     "--bundles",
     bundles,
-    ...(betaConfig ? ["--config", betaConfig] : []),
+    "--config",
+    betaConfig,
     ...forwardedArgs,
   ],
   {

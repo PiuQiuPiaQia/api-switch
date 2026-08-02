@@ -193,6 +193,13 @@ body:has(.vv-app-loading) {
   height: 38px;
 }
 
+.vv-login__update {
+  position: absolute;
+  z-index: 6;
+  top: 48px;
+  right: 54px;
+}
+
 .vv-login__glow {
   position: absolute;
   border-radius: 50%;
@@ -648,7 +655,8 @@ body:has(.vv-app-loading) {
   box-shadow: 0 0 0 3px rgba(37, 169, 118, 0.1);
 }
 
-.vv-topbar > button {
+.vv-topbar > button,
+.vv-update-button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -662,9 +670,29 @@ body:has(.vv-app-loading) {
   cursor: pointer;
 }
 
-.vv-topbar > button:hover:not(:disabled) {
+.vv-topbar > button:hover:not(:disabled),
+.vv-update-button:hover:not(:disabled) {
   color: #4e4f64;
   background: #ededf5;
+}
+
+.vv-update-button.is-available {
+  color: #5546d4;
+  background: #ebe8ff;
+  box-shadow: inset 0 0 0 1px rgba(94, 75, 227, 0.12);
+}
+
+.vv-update-button.is-available:hover:not(:disabled) {
+  color: #4032b9;
+  background: #e2defd;
+}
+
+.vv-update-button--standalone {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #dedeea;
+  color: #404258;
+  background: #fff;
 }
 
 .vv-main__scroll {

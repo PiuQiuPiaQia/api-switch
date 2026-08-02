@@ -10,6 +10,10 @@ vi.mock("../config", () => ({
   IS_PRODUCT_PREVIEW_AVAILABLE: false,
 }));
 
+vi.mock("./AppUpdateControl", () => ({
+  AppUpdateControl: () => null,
+}));
+
 describe("LoginScreen", () => {
   it("keeps the signed-out page focused on the primary login action", () => {
     const onLogin = vi.fn();

@@ -18,6 +18,9 @@ jobs:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     environment: release
+    env:
+      VV_CODE_UPDATE_CHANNEL: stable
+      VV_CODE_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -249,7 +252,7 @@ jobs:
           max_attempts=3
           for attempt in $(seq 1 "$max_attempts"); do
             echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
-            if pnpm tauri build --target universal-apple-darwin; then
+            if pnpm package:release -- --target universal-apple-darwin; then
               echo "✅ macOS build/notarization succeeded"
               exit 0
             fi
@@ -272,14 +275,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
-            pnpm tauri build --target aarch64-pc-windows-msvc --bundles msi
+            pnpm package:release -- --target aarch64-pc-windows-msvc --bundles msi
           } else {
-            pnpm tauri build
+            pnpm package:release
           }
 
       - name: Build Tauri App (Linux)
         if: runner.os == 'Linux'
-        run: pnpm tauri build --bundles appimage,deb,rpm
+        run: pnpm package:release -- --bundles appimage,deb,rpm
 
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'

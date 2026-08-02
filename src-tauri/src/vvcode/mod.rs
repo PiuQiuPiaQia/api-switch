@@ -8,6 +8,8 @@ pub(crate) mod edition;
 mod newapi;
 mod restore;
 pub(crate) mod tray;
+pub(crate) mod updater;
 
 pub use newapi::*;
 pub use restore::*;
+pub use updater::*;

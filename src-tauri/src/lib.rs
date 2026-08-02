@@ -303,6 +303,11 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(vvcode::updater::public_key())
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -1165,6 +1170,8 @@ pub fn run() {
             vvcode::newapi_get_api_info_routes,
             vvcode::newapi_get_group_models,
             vvcode::newapi_ensure_group_tokens,
+            vvcode::vvcode_check_for_update,
+            vvcode::vvcode_install_update_and_restart,
         ]);
 
     let app = builder

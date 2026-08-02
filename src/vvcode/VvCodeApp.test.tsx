@@ -67,6 +67,10 @@ vi.mock("./components/AccountPage", () => ({
   AccountPage: () => <div>用户页</div>,
 }));
 
+vi.mock("./components/AppUpdateControl", () => ({
+  AppUpdateControl: () => null,
+}));
+
 function toolInfo(name: string): ToolVersionInfo {
   return {
     name,

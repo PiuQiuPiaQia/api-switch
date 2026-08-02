@@ -30,6 +30,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { InitializationPanel } from "./components/InitializationPanel";
 import { ScenarioWorkspace } from "./components/ScenarioWorkspace";
 import { AccountPage } from "./components/AccountPage";
+import { AppUpdateControl } from "./components/AppUpdateControl";
 import "./vvcode.css";
 
 type ActivePage = ProductScenario["id"] | "initialize" | "account";
@@ -473,6 +474,7 @@ export default function VvCodeApp() {
             <span>{preview ? "界面预览" : "中转站已连接"}</span>
             <i />
           </div>
+          <AppUpdateControl />
           {!preview && (
             <button
               type="button"

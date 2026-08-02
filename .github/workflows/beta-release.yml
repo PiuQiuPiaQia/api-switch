@@ -20,6 +20,9 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    env:
+      VV_CODE_UPDATE_CHANNEL: beta
+      VV_CODE_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +69,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare updater signing key
+        shell: bash
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAW_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is required for beta updater artifacts."
+            exit 1
+          fi
+          if [ -z "$VV_CODE_UPDATER_PUBKEY" ]; then
+            echo "::error::TAURI_SIGNING_PUBLIC_KEY is required for signed in-app updates."
+            exit 1
+          fi
+
+          key_path="$RUNNER_TEMP/tauri_signing.key"
+          if printf '%s' "$RAW_PRIVATE_KEY" | head -n1 | grep -q '^untrusted comment:'; then
+            printf '%s\n' "$RAW_PRIVATE_KEY" > "$key_path"
+          elif decoded=$(printf '%s' "$RAW_PRIVATE_KEY" | (base64 --decode 2>/dev/null || base64 -D 2>/dev/null)) \
+            && printf '%s' "$decoded" | head -n1 | grep -q '^untrusted comment:'; then
+            printf '%s\n' "$decoded" > "$key_path"
+          elif printf '%s' "$RAW_PRIVATE_KEY" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
+            one_line=$(printf '%s' "$RAW_PRIVATE_KEY" | tr -d '\r\n')
+            printf '%s\n%s\n' "untrusted comment: tauri signing key" "$one_line" > "$key_path"
+          else
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY has an unsupported format."
+            exit 1
+          fi
+
+          key_b64=$(base64 < "$key_path" | tr -d '\r\n')
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key_b64" >> "$GITHUB_ENV"
+          if [ -n "$PRIVATE_KEY_PASSWORD" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$PRIVATE_KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
       - name: Build macOS package
         if: runner.os == 'macOS'
         run: pnpm package:beta -- --target universal-apple-darwin
@@ -83,9 +122,12 @@ jobs:
           bundle_root="src-tauri/target/universal-apple-darwin/release/bundle"
           app_path=$(find "$bundle_root/macos" -maxdepth 1 -name '*.app' -type d | head -1)
           dmg_path=$(find "$bundle_root/dmg" -maxdepth 1 -name '*.dmg' -type f | head -1)
+          updater_path=$(find "$bundle_root/macos" -maxdepth 1 -name '*.tar.gz' -type f | head -1)
 
           test -n "$app_path"
           test -n "$dmg_path"
+          test -n "$updater_path"
+          test -f "$updater_path.sig"
 
           bundle_id=$(/usr/libexec/PlistBuddy \
             -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")
@@ -107,6 +149,8 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "$app_path" beta-artifacts/VV-Code-beta-macOS.app.zip
           cp "$dmg_path" beta-artifacts/VV-Code-beta-macOS.dmg
+          cp "$updater_path" beta-artifacts/VV-Code-beta-macOS.tar.gz
+          cp "$updater_path.sig" beta-artifacts/VV-Code-beta-macOS.tar.gz.sig
 
       - name: Collect Windows package
         if: runner.os == 'Windows'
@@ -120,8 +164,10 @@ jobs:
 
           if ($null -eq $msi) { throw 'Windows MSI was not generated.' }
           if ($null -eq $nsis) { throw 'Windows installer was not generated.' }
+          if (-not (Test-Path "$($msi.FullName).sig")) { throw 'Windows MSI updater signature was not generated.' }
 
           Copy-Item $msi.FullName beta-artifacts/VV-Code-beta-Windows-x64.msi
+          Copy-Item "$($msi.FullName).sig" beta-artifacts/VV-Code-beta-Windows-x64.msi.sig
           Copy-Item $nsis.FullName beta-artifacts/VV-Code-beta-Windows-x64-setup.exe
 
       - name: Upload package
@@ -162,7 +208,10 @@ jobs:
 
           test -f release-assets/VV-Code-beta-macOS.dmg
           test -f release-assets/VV-Code-beta-macOS.app.zip
+          test -f release-assets/VV-Code-beta-macOS.tar.gz
+          test -f release-assets/VV-Code-beta-macOS.tar.gz.sig
           test -f release-assets/VV-Code-beta-Windows-x64.msi
+          test -f release-assets/VV-Code-beta-Windows-x64.msi.sig
           test -f release-assets/VV-Code-beta-Windows-x64-setup.exe
 
           mkdir -p publish-assets
@@ -170,8 +219,14 @@ jobs:
             "publish-assets/VV-Code-${tag}-macOS.dmg"
           cp release-assets/VV-Code-beta-macOS.app.zip \
             "publish-assets/VV-Code-${tag}-macOS.app.zip"
+          cp release-assets/VV-Code-beta-macOS.tar.gz \
+            "publish-assets/VV-Code-${tag}-macOS.tar.gz"
+          cp release-assets/VV-Code-beta-macOS.tar.gz.sig \
+            "publish-assets/VV-Code-${tag}-macOS.tar.gz.sig"
           cp release-assets/VV-Code-beta-Windows-x64.msi \
             "publish-assets/VV-Code-${tag}-Windows-x64.msi"
+          cp release-assets/VV-Code-beta-Windows-x64.msi.sig \
+            "publish-assets/VV-Code-${tag}-Windows-x64.msi.sig"
           cp release-assets/VV-Code-beta-Windows-x64-setup.exe \
             "publish-assets/VV-Code-${tag}-Windows-x64-setup.exe"
 
@@ -179,6 +234,15 @@ jobs:
             cd publish-assets
             sha256sum VV-Code-* > SHA256SUMS.txt
           )
+
+      - name: Generate updater manifest
+        shell: bash
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/vvcode/generate-updater-manifest.mjs \
+            publish-assets "$TAG" "$GITHUB_REPOSITORY" publish-assets/latest.json
 
       - name: Publish release
         uses: softprops/action-gh-release@v3

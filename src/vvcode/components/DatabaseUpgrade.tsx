@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { exit } from "@tauri-apps/plugin-process";
 import { AlertTriangle, FolderOpen, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppUpdateControl } from "./AppUpdateControl";
 
 interface DatabaseUpgradeProps {
   payload: {
@@ -15,8 +16,8 @@ interface DatabaseUpgradeProps {
 }
 
 /**
- * 数据库版本过新时进入只读恢复界面。VV Code 的自有更新服务尚未接入，
- * 因此这里不会跳转到上游项目或尝试安装来源不明的更新包。
+ * 数据库版本过新时进入只读恢复界面。这里只允许安装 VV Code Release
+ * 通道中通过 minisign 校验的更新包，不会跳转到上游项目。
  */
 export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
   const { t } = useTranslation();
@@ -66,11 +67,12 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
         <p className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm leading-6 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
           {t(
             "dbUpgrade.releaseHintVvCode",
-            "自有更新服务接入前，请从 VV Code 的正式发布渠道获取安装包。不要使用 CC Switch 的更新包覆盖本应用。",
+            "请先检查并安装 VV Code 更新；若仍不兼容，再从 VV Code 的 GitHub 发布页获取安装包。不要使用 CC Switch 的更新包覆盖本应用。",
           )}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
+          <AppUpdateControl className="vv-update-button--standalone" />
           <Button
             variant="outline"
             className="gap-2"

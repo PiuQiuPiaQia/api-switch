@@ -1,5 +1,6 @@
 import { ArrowRight, Check, Loader2, LockKeyhole, Orbit } from "lucide-react";
 import { BrandMark } from "./BrandMark";
+import { AppUpdateControl } from "./AppUpdateControl";
 import { PRODUCT, IS_PRODUCT_PREVIEW_AVAILABLE } from "../config";
 
 interface LoginScreenProps {
@@ -22,6 +23,9 @@ export function LoginScreen({
   return (
     <main className="vv-login">
       <div className="vv-login__drag" data-tauri-drag-region />
+      <div className="vv-login__update">
+        <AppUpdateControl className="vv-update-button--standalone" />
+      </div>
       <div className="vv-login__glow vv-login__glow--one" />
       <div className="vv-login__glow vv-login__glow--two" />
 
