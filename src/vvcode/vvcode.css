@@ -640,7 +640,7 @@ body:has(.vv-app-loading) {
   align-items: center;
   gap: 6px;
   color: #77798b;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 570;
 }
 
@@ -666,7 +666,7 @@ body:has(.vv-app-loading) {
   color: #787a8d;
   background: transparent;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -753,7 +753,7 @@ body:has(.vv-app-loading) {
 .vv-page-heading p {
   margin: 2px 0 0;
   color: #7d8495;
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -809,14 +809,14 @@ body:has(.vv-app-loading) {
   border-radius: 8px;
   color: #8a8d9d;
   background: rgba(255, 255, 255, 0.82);
-  font-size: 8px;
+  font-size: 10px;
   white-space: nowrap;
 }
 
 .vv-scenario-version strong {
   color: #4d5063;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 680;
 }
 
@@ -2376,7 +2376,7 @@ body:has(.vv-app-loading) {
 .vv-api-list-card__header p {
   margin: 0;
   color: #9596a6;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-api-list-card__header > span {
@@ -2384,7 +2384,7 @@ body:has(.vv-app-loading) {
   border-radius: 8px;
   color: #5d50d1;
   background: #efedff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 680;
   white-space: nowrap;
 }
@@ -2419,7 +2419,7 @@ body:has(.vv-app-loading) {
   padding-bottom: 4px;
   color: #a0a1b0;
   background: #fafafe;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
 }
 
@@ -2459,13 +2459,13 @@ body:has(.vv-app-loading) {
 
 .vv-api-name strong {
   color: #414256;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 660;
 }
 
 .vv-api-name small {
   color: #9899aa;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .vv-api-row > code {
@@ -2473,7 +2473,7 @@ body:has(.vv-app-loading) {
   overflow: hidden;
   color: #505267;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2506,13 +2506,13 @@ body:has(.vv-app-loading) {
 
 .vv-api-probe strong {
   color: #525365;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
 }
 
 .vv-api-probe small {
   color: #9a9baa;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .vv-api-probe__dot {
@@ -2579,7 +2579,7 @@ body:has(.vv-app-loading) {
   color: #696a7c;
   background: #fff;
   font: inherit;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
   white-space: nowrap;
   cursor: pointer;
@@ -2611,7 +2611,7 @@ body:has(.vv-app-loading) {
   padding: 8px 17px;
   color: #9495a5;
   background: #fcfcfe;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -2635,7 +2635,7 @@ body:has(.vv-app-loading) {
   color: #727487;
   background: transparent;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: 150ms ease;
@@ -2739,7 +2739,7 @@ body:has(.vv-app-loading) {
   max-width: 510px;
   margin: 9px 0 0;
   color: #858698;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -2751,7 +2751,7 @@ body:has(.vv-app-loading) {
   margin-top: 18px;
   padding: 9px 11px;
   color: #a95b43;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.5;
   text-align: left;
 }
@@ -3030,7 +3030,7 @@ body:has(.vv-app-loading) {
 .vv-section-title p {
   margin: 0;
   color: #9293a3;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-group-toolbar {
@@ -3046,7 +3046,7 @@ body:has(.vv-app-loading) {
   width: 42px;
   flex: none;
   color: #6f7183;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -3086,7 +3086,7 @@ body:has(.vv-app-loading) {
 .vv-group-select__current strong {
   overflow: hidden;
   color: #36374c;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3102,7 +3102,7 @@ body:has(.vv-app-loading) {
   border-radius: 6px;
   color: #7c6b43;
   background: #f8f3e8;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 620;
 }
 
@@ -3148,7 +3148,7 @@ body:has(.vv-app-loading) {
 .vv-group-select__option-copy strong {
   overflow: hidden;
   color: #424357;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 660;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3157,7 +3157,7 @@ body:has(.vv-app-loading) {
 .vv-group-select__option-copy small {
   overflow: hidden;
   color: #9697a7;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3169,7 +3169,7 @@ body:has(.vv-app-loading) {
   border-radius: 6px;
   color: #7c6b43;
   background: #f8f3e8;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 620;
 }
 
@@ -3334,7 +3334,7 @@ body:has(.vv-app-loading) {
   gap: 7px;
   margin-left: auto;
   color: #6658dc;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .vv-credential-status svg {
@@ -3363,7 +3363,7 @@ body:has(.vv-app-loading) {
   color: #a44752;
   background: transparent;
   font: inherit;
-  font-size: 8px;
+  font-size: 10px;
   cursor: pointer;
 }
 
@@ -3422,7 +3422,7 @@ body:has(.vv-app-loading) {
 .vv-core-routes__heading strong {
   display: block;
   color: #35364b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 680;
 }
 
@@ -3436,7 +3436,7 @@ body:has(.vv-app-loading) {
   overflow: hidden;
   color: #9697a7;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3450,7 +3450,7 @@ body:has(.vv-app-loading) {
   border-radius: 7px;
   color: #6257c9;
   background: #f8f7ff;
-  font-size: 8px;
+  font-size: 10px;
   cursor: pointer;
 }
 
@@ -3480,7 +3480,7 @@ body:has(.vv-app-loading) {
 
 .vv-core-routes__grid label > span {
   color: #747689;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 620;
 }
 
@@ -3495,7 +3495,7 @@ body:has(.vv-app-loading) {
   border-radius: 8px;
   color: #46475a;
   background: #fff;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-core-routes__grid input::placeholder,
@@ -3526,7 +3526,7 @@ body:has(.vv-app-loading) {
 
 .vv-core-default-model > span {
   color: #747689;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 620;
 }
 
@@ -3551,7 +3551,7 @@ body:has(.vv-app-loading) {
   border-radius: 999px;
   color: #858697;
   background: #f2f2f5;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 680;
 }
 
@@ -3563,7 +3563,7 @@ body:has(.vv-app-loading) {
 .vv-core-model-order-hint {
   margin: 0;
   color: #8f90a0;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -3573,7 +3573,7 @@ body:has(.vv-app-loading) {
   gap: 7px;
   padding: 0 1px;
   color: #8f90a0;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 620;
 }
 
@@ -3703,14 +3703,14 @@ body:has(.vv-app-loading) {
   border-radius: 6px;
   color: #17835f;
   background: #e9f8f2;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
 }
 
 .vv-account-identity > p {
   margin: 3px 0 9px;
   color: #9899a9;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .vv-account-meta {
@@ -3718,7 +3718,7 @@ body:has(.vv-app-loading) {
   flex-wrap: wrap;
   gap: 12px;
   color: #7c7e91;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-account-meta span {
@@ -3740,7 +3740,7 @@ body:has(.vv-app-loading) {
   align-items: center;
   gap: 6px;
   color: #77798d;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -3759,7 +3759,7 @@ body:has(.vv-app-loading) {
 .vv-account-wallet > small {
   margin-top: 1px;
   color: #9b9cac;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .vv-account-wallet__recharge {
@@ -3775,7 +3775,7 @@ body:has(.vv-app-loading) {
   color: #fff;
   background: linear-gradient(135deg, #7568f5 0%, #5e4be3 100%);
   box-shadow: 0 5px 13px rgba(92, 76, 226, 0.18);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 680;
   text-decoration: none;
   transition:
@@ -3847,7 +3847,7 @@ body:has(.vv-app-loading) {
 
 .vv-stat-card > span {
   color: #8b8c9e;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-stat-card > strong {
@@ -3861,7 +3861,7 @@ body:has(.vv-app-loading) {
 .vv-stat-card > small {
   margin-top: auto;
   color: #aaaab9;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .vv-account-details {
@@ -3892,7 +3892,7 @@ body:has(.vv-app-loading) {
   padding: 0 12px;
   border-bottom: 1px solid #efeff4;
   color: #57596c;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .vv-account-details dl > div:nth-child(odd) {

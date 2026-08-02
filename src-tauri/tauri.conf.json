@@ -36,6 +36,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "VV Code desktop workspace for AI coding tools",
     "createUpdaterArtifacts": false,
     "resources": ["../LICENSE", "../NOTICE"],
     "icon": [

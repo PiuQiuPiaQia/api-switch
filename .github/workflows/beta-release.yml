@@ -20,6 +20,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -66,8 +67,77 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Import Apple signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          for required in \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            KEYCHAIN_PASSWORD \
+            APPLE_ID \
+            APPLE_PASSWORD \
+            APPLE_TEAM_ID; do
+            if [ -z "${!required:-}" ]; then
+              echo "Missing required macOS release secret: $required" >&2
+              exit 1
+            fi
+          done
+
+          cert_path="$RUNNER_TEMP/vv-code-beta-certificate.p12"
+          keychain_path="$RUNNER_TEMP/vv-code-beta.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" \
+            | (base64 --decode 2>/dev/null || base64 -D) > "$cert_path"
+
+          original_keychain=$(security default-keychain -d user | tr -d '"' | xargs)
+          echo "ORIGINAL_DEFAULT_KEYCHAIN=$original_keychain" >> "$GITHUB_ENV"
+          echo "VV_CODE_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$cert_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+
+          identity=$(security find-identity -v -p codesigning "$keychain_path" \
+            | grep 'Developer ID Application' \
+            | grep -oE '"[^"]+"' \
+            | head -1 \
+            | tr -d '"')
+          if [ -z "$identity" ]; then
+            echo "No Developer ID Application identity found." >&2
+            security find-identity -v -p codesigning "$keychain_path"
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          rm -f "$cert_path"
+
       - name: Build macOS package
         if: runner.os == 'macOS'
+        timeout-minutes: 60
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm package:beta -- --target universal-apple-darwin
 
       - name: Build Windows package
@@ -86,12 +156,49 @@ jobs:
 
           test -n "$app_path"
           test -n "$dmg_path"
+
+          bundle_id=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")
+          display_name=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleDisplayName' "$app_path/Contents/Info.plist")
+          executable=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")
+          category=$(/usr/libexec/PlistBuddy \
+            -c 'Print :LSApplicationCategoryType' "$app_path/Contents/Info.plist")
+
+          test "$bundle_id" = 'com.vvcode.desktop'
+          test "$display_name" = 'VV Code'
+          test "$executable" = 'vv-code'
+          test "$category" = 'public.app-category.developer-tools'
+
           codesign --verify --deep --strict --verbose=2 "$app_path"
-          codesign -dv --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc'
+          signing_info=$(codesign -dv --verbose=4 "$app_path" 2>&1)
+          echo "$signing_info" | grep -q 'Authority=Developer ID Application:'
+          echo "$signing_info" | grep -q 'Identifier=com.vvcode.desktop'
+          if echo "$signing_info" | grep -q 'Signature=adhoc'; then
+            echo 'Refusing to publish an ad-hoc signed macOS beta.' >&2
+            exit 1
+          fi
+          spctl -a -t exec -vv "$app_path"
+          xcrun stapler validate "$app_path"
+          codesign --verify --verbose=2 "$dmg_path"
+          spctl -a -t open --context context:primary-signature -vv "$dmg_path"
+          xcrun stapler validate "$dmg_path"
 
           ditto -c -k --sequesterRsrc --keepParent \
             "$app_path" beta-artifacts/VV-Code-beta-macOS.app.zip
           cp "$dmg_path" beta-artifacts/VV-Code-beta-macOS.dmg
+
+      - name: Clean up Apple signing keychain
+        if: runner.os == 'macOS' && always()
+        shell: bash
+        run: |
+          if [ -n "${ORIGINAL_DEFAULT_KEYCHAIN:-}" ]; then
+            security default-keychain -s "$ORIGINAL_DEFAULT_KEYCHAIN" || true
+          fi
+          if [ -n "${VV_CODE_KEYCHAIN_PATH:-}" ] && [ -f "$VV_CODE_KEYCHAIN_PATH" ]; then
+            security delete-keychain "$VV_CODE_KEYCHAIN_PATH" || true
+          fi
 
       - name: Collect Windows package
         if: runner.os == 'Windows'
@@ -184,7 +291,7 @@ jobs:
             - macOS：`.dmg` 或 `.app.zip`
             - Windows：`setup.exe` 或 `.msi`
 
-            > Beta 安装包未经过 Apple 公证或正式代码签名，安装时可能出现系统安全提示。
+            > macOS Beta 安装包已通过 Developer ID 签名与 Apple 公证；Windows Beta 安装包暂未签名，可能出现 SmartScreen 提示。
 
             基于 [CC Switch](https://github.com/farion1231/cc-switch) 开发，遵循 MIT License。
           files: publish-assets/*

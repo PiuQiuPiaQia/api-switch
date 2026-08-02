@@ -35,7 +35,7 @@ VITE_NEWAPI_BASE_URL=https://vvcode.top
 - 安装包不再注册 OAuth 自定义 URL 协议。
 - CC Switch 官方更新源已移除，`createUpdaterArtifacts` 暂时关闭。
 
-正式发布前还需配置自有代码签名、安装包图标、更新签名公钥和自有更新地址。不得恢复上游 CC Switch 的更新公钥或下载地址，否则二开版本可能被上游包覆盖。
+GitHub 发行环境必须配置 VV Code 自有的 Apple Developer ID、Apple 公证凭据、更新签名私钥和自有更新地址。不得恢复上游 CC Switch 的签名凭据、更新公钥或下载地址，否则二开版本可能被上游包覆盖。
 
 ## Beta 发布
 
@@ -45,9 +45,9 @@ VITE_NEWAPI_BASE_URL=https://vvcode.top
 pnpm package:beta
 ```
 
-- macOS：必须在 Mac 上执行，生成 ad-hoc 签名的 `.app` 和 `.dmg`。它没有 Apple Developer ID，也不会提交 Apple 公证；接收者首次启动时需要在“系统设置 → 隐私与安全性”中选择“仍要打开”。
+- macOS：本地未提供 `APPLE_SIGNING_IDENTITY` 时生成 ad-hoc 签名的 `.app` 和 `.dmg`，仅供本机开发验证，不得作为公开下载包。提供 Developer ID 与完整 Apple 公证凭据时，脚本会生成正式签名并公证的产物；凭据不完整会立即失败。
 - Windows：必须在 Windows 上执行，生成未签名的 MSI 和 NSIS 安装器；接收者可能会看到 Microsoft Defender SmartScreen 提示。
-- GitHub 的 `Beta Release` 工作流会同时构建 macOS Universal 和 Windows x64，成功后创建 `v<版本>-beta.<编号>` Pre-release。运行时填写的 `notes` 会作为精简更新说明。
+- GitHub 的 `Beta Release` 工作流会同时构建 macOS Universal 和 Windows x64，macOS 任务强制导入 VV Code 自有 Developer ID、执行 Apple 公证，并用 Gatekeeper 与 stapler 校验 `.app`/`.dmg`；任何一步未通过都不会发布。成功后创建 `v<版本>-beta.<编号>` Pre-release，运行时填写的 `notes` 会作为精简更新说明。
 - Beta Release 包含 DMG、macOS `.app.zip`、Windows NSIS、MSI 和 `SHA256SUMS.txt`；它不会成为 `latest`，也不会生成应用更新清单。
 
 正式版本使用 `Production Release` 工作流，仅响应非 Beta 的 `v*` 标签，并发布为仓库的 latest Release。
