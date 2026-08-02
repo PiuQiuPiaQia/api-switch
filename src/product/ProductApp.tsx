@@ -8,20 +8,15 @@ import {
   useState,
 } from "react";
 import {
-  Blocks,
-  Bot,
   ChevronRight,
   Cloud,
   Gauge,
-  Gem,
-  Feather,
   Loader2,
   MessageSquareText,
   RefreshCw,
-  Sparkles,
-  TerminalSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ProviderIcon } from "@/components/ProviderIcon";
 import { settingsApi } from "@/lib/api/settings";
 import { PRODUCT } from "./config";
 import { newApiApi } from "./api";
@@ -85,24 +80,6 @@ async function withToolCheckTimeout<T>(operation: Promise<T>): Promise<T> {
     ]);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
-  }
-}
-
-function ScenarioIcon({ scenario }: { scenario: ProductScenario }) {
-  const props = { size: 18, strokeWidth: 1.9 };
-  switch (scenario.icon) {
-    case "spark":
-      return <Sparkles {...props} />;
-    case "terminal":
-      return <TerminalSquare {...props} />;
-    case "gem":
-      return <Gem {...props} />;
-    case "blocks":
-      return <Blocks {...props} />;
-    case "claw":
-      return <Bot {...props} />;
-    case "hermes":
-      return <Feather {...props} />;
   }
 }
 
@@ -443,11 +420,17 @@ export default function ProductApp() {
               onClick={() => setActivePage(scenario.id)}
             >
               <i
+                aria-hidden="true"
                 style={
                   { "--nav-accent": scenario.accent } as React.CSSProperties
                 }
               >
-                <ScenarioIcon scenario={scenario} />
+                <ProviderIcon
+                  icon={scenario.icon}
+                  name={scenario.name}
+                  size={18}
+                  showFallback={false}
+                />
               </i>
               <span>{scenario.name}</span>
             </button>

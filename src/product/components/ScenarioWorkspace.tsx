@@ -3,21 +3,16 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpCircle,
-  Blocks,
-  Bot,
   Check,
   ChevronsUpDown,
   CircleDollarSign,
   Download,
-  Feather,
-  Gem,
   Loader2,
   RefreshCw,
   ServerCog,
-  Sparkles,
-  TerminalSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ProviderIcon } from "@/components/ProviderIcon";
 import {
   Command,
   CommandEmpty,
@@ -71,24 +66,6 @@ interface KeyPreparationState {
 }
 
 type ToolLifecycleAction = "install" | "update";
-
-function ScenarioPageIcon({ scenario }: { scenario: ProductScenario }) {
-  const props = { size: 20, strokeWidth: 1.9 };
-  switch (scenario.icon) {
-    case "spark":
-      return <Sparkles {...props} />;
-    case "terminal":
-      return <TerminalSquare {...props} />;
-    case "gem":
-      return <Gem {...props} />;
-    case "blocks":
-      return <Blocks {...props} />;
-    case "claw":
-      return <Bot {...props} />;
-    case "hermes":
-      return <Feather {...props} />;
-  }
-}
 
 function ratioLabel(value: string): string {
   if (!value) return "1×";
@@ -532,10 +509,16 @@ export function ScenarioWorkspace({
       style={{ "--scenario-accent": scenario.accent } as React.CSSProperties}
     >
       <PageHeading
-        eyebrow="AI 工具配置"
         title={scenario.name}
         description={scenario.description}
-        icon={<ScenarioPageIcon scenario={scenario} />}
+        icon={
+          <ProviderIcon
+            icon={scenario.icon}
+            name={scenario.name}
+            size={21}
+            showFallback={false}
+          />
+        }
         accent={scenario.accent}
         actions={
           <button

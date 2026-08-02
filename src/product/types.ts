@@ -16,7 +16,7 @@ export interface ProductScenario {
   shortName: string;
   description: string;
   accent: string;
-  icon: "spark" | "terminal" | "gem" | "blocks" | "claw" | "hermes";
+  icon: "claude" | "openai" | "gemini" | "opencode" | "openclaw" | "hermes";
 }
 
 export interface NewApiSession {

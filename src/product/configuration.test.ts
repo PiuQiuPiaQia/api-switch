@@ -57,7 +57,7 @@ const openCodeScenario: ProductScenario = {
   shortName: "OpenCode",
   description: "",
   accent: "#8b5cf6",
-  icon: "blocks",
+  icon: "opencode",
 };
 
 function scenario(id: ProductScenario["id"]): ProductScenario {

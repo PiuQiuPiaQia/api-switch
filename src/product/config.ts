@@ -26,7 +26,7 @@ export const PRODUCT = {
       shortName: "Claude",
       description: "适合复杂代码理解、重构与代理式开发",
       accent: "#d97757",
-      icon: "spark",
+      icon: "claude",
     },
     {
       id: "codex",
@@ -36,7 +36,7 @@ export const PRODUCT = {
       shortName: "Codex",
       description: "面向工程任务的高效终端编码助手",
       accent: "#10a37f",
-      icon: "terminal",
+      icon: "openai",
     },
     {
       id: "gemini",
@@ -46,7 +46,7 @@ export const PRODUCT = {
       shortName: "Gemini",
       description: "长上下文与多模态能力驱动的开发体验",
       accent: "#5b7cfa",
-      icon: "gem",
+      icon: "gemini",
     },
     {
       id: "openclaw",
@@ -56,7 +56,7 @@ export const PRODUCT = {
       shortName: "龙虾",
       description: "面向本地工具、消息与自动化任务的开放智能体",
       accent: "#f97316",
-      icon: "claw",
+      icon: "openclaw",
     },
     {
       id: "hermes",

@@ -764,6 +764,37 @@ body:has(.vv-app-loading) {
   line-height: 1.45;
 }
 
+.vv-scenario-page {
+  width: min(1180px, calc(100% - 36px));
+  padding-top: 14px;
+  padding-bottom: 24px;
+}
+
+.vv-scenario-page .vv-page-heading {
+  min-height: 44px;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.vv-scenario-page .vv-page-heading__identity {
+  gap: 10px;
+}
+
+.vv-scenario-page .vv-page-heading__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--page-accent) 8%, transparent);
+}
+
+.vv-scenario-page .vv-page-heading h1 {
+  font-size: 17px;
+}
+
+.vv-scenario-page .vv-page-heading p {
+  margin-top: 1px;
+}
+
 /* Chat */
 
 .vv-chat-page {
@@ -2857,7 +2888,7 @@ body:has(.vv-app-loading) {
 .vv-catalog {
   position: relative;
   overflow: hidden;
-  padding: 20px;
+  padding: 14px;
   border: 1px solid var(--vv-line);
   border-radius: var(--vv-radius);
   background: #fff;
@@ -2927,8 +2958,8 @@ body:has(.vv-app-loading) {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 14px;
-  padding-bottom: 18px;
+  gap: 10px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #e7eaf0;
 }
 
@@ -3258,8 +3289,8 @@ body:has(.vv-app-loading) {
 }
 
 .vv-provider-editor {
-  margin-top: 18px;
-  padding-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 0;
 }
 
@@ -3295,7 +3326,7 @@ body:has(.vv-app-loading) {
 
 .vv-core-provider-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .vv-core-routes {
@@ -3352,8 +3383,8 @@ body:has(.vv-app-loading) {
 .vv-core-routes__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 9px;
-  margin-top: 11px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .vv-core-routes__grid label {
@@ -3473,8 +3504,8 @@ body:has(.vv-app-loading) {
 .vv-config-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #e7eaf0;
 }
 
