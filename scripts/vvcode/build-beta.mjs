@@ -33,8 +33,21 @@ const buildVersion =
   env.VV_CODE_BUILD_VERSION ||
   `${packageVersion}-beta.${env.GITHUB_RUN_NUMBER || "0"}`;
 const createUpdaterArtifacts = Boolean(env.TAURI_SIGNING_PRIVATE_KEY);
+if (createUpdaterArtifacts && !env.VV_CODE_UPDATER_PUBKEY) {
+  console.error(
+    "VV_CODE_UPDATER_PUBKEY is required when signing beta updater artifacts.",
+  );
+  process.exit(1);
+}
 const betaConfig = JSON.stringify({
   version: buildVersion,
+  plugins: {
+    updater: {
+      // The Rust builder injects the same key at runtime, while the Tauri CLI
+      // also needs it here to verify that release signatures use that key.
+      pubkey: env.VV_CODE_UPDATER_PUBKEY || "",
+    },
+  },
   bundle: {
     createUpdaterArtifacts,
     ...(platform === "win32" ? { windows: { wix: { template: null } } } : {}),

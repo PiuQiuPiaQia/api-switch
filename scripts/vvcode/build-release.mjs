@@ -33,7 +33,12 @@ const result = spawnSync(
     tauriCli,
     "build",
     "--config",
-    JSON.stringify({ bundle: { createUpdaterArtifacts: true } }),
+    JSON.stringify({
+      plugins: {
+        updater: { pubkey: process.env.VV_CODE_UPDATER_PUBKEY },
+      },
+      bundle: { createUpdaterArtifacts: true },
+    }),
     ...forwardedArgs,
   ],
   { env: process.env, stdio: "inherit" },
