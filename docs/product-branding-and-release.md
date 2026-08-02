@@ -46,6 +46,6 @@ pnpm package:internal
 
 - macOS：必须在 Mac 上执行，生成 ad-hoc 签名的 `.app` 和 `.dmg`。它没有 Apple Developer ID，也不会提交 Apple 公证；接收者首次启动时需要在“系统设置 → 隐私与安全性”中选择“仍要打开”。
 - Windows：必须在 Windows 上执行，生成未签名的 MSI 和 NSIS 安装器；接收者可能会看到 Microsoft Defender SmartScreen 提示。
-- GitHub 仓库的 `Internal desktop build` 工作流可手动执行，同一次运行会生成 macOS Universal 和 Windows x64 两组产物，保留 14 天。
+- GitHub 仓库的 `Internal desktop build` 工作流可手动执行，默认同一次运行生成 macOS Universal 和 Windows x64 两组产物，也可单独选择 `windows` 或 `macos`，产物保留 14 天。
 
 内测构建不得作为已签名、已公证的正式版本宣传。获得正式证书后，仍使用独立的 `Release` 工作流发布。

@@ -2,6 +2,16 @@ name: Internal desktop build
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Platforms to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
 
 permissions:
   contents: read
@@ -40,22 +50,32 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add macOS universal targets
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && inputs.target != 'windows'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Install Linux-independent dependencies
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build macOS internal package
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && inputs.target != 'windows'
         run: pnpm package:internal -- --target universal-apple-darwin
 
       - name: Build Windows internal package
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && inputs.target != 'macos'
         run: pnpm package:internal
 
       - name: Collect and verify macOS artifacts
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && inputs.target != 'windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -74,7 +94,7 @@ jobs:
           cp "$dmg_path" internal-artifacts/VV-Code-internal-macOS.dmg
 
       - name: Collect Windows artifacts
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && inputs.target != 'macos'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -90,6 +110,9 @@ jobs:
           Copy-Item $nsis.FullName internal-artifacts/VV-Code-internal-Windows-x64-setup.exe
 
       - name: Upload internal packages
+        if: >-
+          (runner.os == 'macOS' && inputs.target != 'windows') ||
+          (runner.os == 'Windows' && inputs.target != 'macos')
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}

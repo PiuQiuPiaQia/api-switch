@@ -29,9 +29,11 @@ if (!existsSync(tauriCli)) {
 const env = { ...process.env };
 const bundles = platform === "darwin" ? "app,dmg" : "msi,nsis";
 const cargoBin = join(homedir(), ".cargo", "bin");
+const pathKey =
+  Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 
 if (existsSync(cargoBin)) {
-  env.PATH = `${cargoBin}${delimiter}${env.PATH ?? ""}`;
+  env[pathKey] = `${cargoBin}${delimiter}${env[pathKey] ?? ""}`;
 }
 
 if (platform === "darwin") {
