@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm tauri dev",
     "build": "pnpm tauri build",
+    "package:internal": "node scripts/build-internal.mjs",
     "icons:generate": "tauri icon src/product/assets/app-icon.png",
     "tauri": "tauri",
     "dev:renderer": "vite",
