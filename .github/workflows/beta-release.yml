@@ -159,16 +159,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path beta-artifacts | Out-Null
           $bundleRoot = 'src-tauri/target/release/bundle'
-          $msi = Get-ChildItem -Path $bundleRoot -Recurse -Filter *.msi | Select-Object -First 1
           $nsis = Get-ChildItem -Path $bundleRoot -Recurse -Filter *.exe | Select-Object -First 1
 
-          if ($null -eq $msi) { throw 'Windows MSI was not generated.' }
           if ($null -eq $nsis) { throw 'Windows installer was not generated.' }
-          if (-not (Test-Path "$($msi.FullName).sig")) { throw 'Windows MSI updater signature was not generated.' }
+          if (-not (Test-Path "$($nsis.FullName).sig")) { throw 'Windows NSIS updater signature was not generated.' }
 
-          Copy-Item $msi.FullName beta-artifacts/VV-Code-beta-Windows-x64.msi
-          Copy-Item "$($msi.FullName).sig" beta-artifacts/VV-Code-beta-Windows-x64.msi.sig
           Copy-Item $nsis.FullName beta-artifacts/VV-Code-beta-Windows-x64-setup.exe
+          Copy-Item "$($nsis.FullName).sig" beta-artifacts/VV-Code-beta-Windows-x64-setup.exe.sig
 
       - name: Upload package
         uses: actions/upload-artifact@v7
@@ -210,9 +207,8 @@ jobs:
           test -f release-assets/VV-Code-beta-macOS.app.zip
           test -f release-assets/VV-Code-beta-macOS.tar.gz
           test -f release-assets/VV-Code-beta-macOS.tar.gz.sig
-          test -f release-assets/VV-Code-beta-Windows-x64.msi
-          test -f release-assets/VV-Code-beta-Windows-x64.msi.sig
           test -f release-assets/VV-Code-beta-Windows-x64-setup.exe
+          test -f release-assets/VV-Code-beta-Windows-x64-setup.exe.sig
 
           mkdir -p publish-assets
           cp release-assets/VV-Code-beta-macOS.dmg \
@@ -223,12 +219,10 @@ jobs:
             "publish-assets/VV-Code-${tag}-macOS.tar.gz"
           cp release-assets/VV-Code-beta-macOS.tar.gz.sig \
             "publish-assets/VV-Code-${tag}-macOS.tar.gz.sig"
-          cp release-assets/VV-Code-beta-Windows-x64.msi \
-            "publish-assets/VV-Code-${tag}-Windows-x64.msi"
-          cp release-assets/VV-Code-beta-Windows-x64.msi.sig \
-            "publish-assets/VV-Code-${tag}-Windows-x64.msi.sig"
           cp release-assets/VV-Code-beta-Windows-x64-setup.exe \
             "publish-assets/VV-Code-${tag}-Windows-x64-setup.exe"
+          cp release-assets/VV-Code-beta-Windows-x64-setup.exe.sig \
+            "publish-assets/VV-Code-${tag}-Windows-x64-setup.exe.sig"
 
           (
             cd publish-assets
@@ -261,7 +255,7 @@ jobs:
             ## 下载
 
             - macOS：`.dmg` 或 `.app.zip`
-            - Windows：`setup.exe` 或 `.msi`
+            - Windows：`setup.exe`
 
             > macOS Beta 使用 ad-hoc 签名且未经过 Apple 公证。拖入 Applications 后如果未出现在应用列表，请先在终端运行 `open "/Applications/VV Code.app"`，再前往“系统设置 → 隐私与安全性”点击“仍要打开”；批准并成功启动一次后，系统才会把它作为可启动应用正常收录。Windows Beta 暂未签名，可能出现 SmartScreen 提示。
 

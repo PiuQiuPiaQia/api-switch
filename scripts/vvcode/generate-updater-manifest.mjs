@@ -41,7 +41,8 @@ const macArtifact = files.find(
   (name) => name.endsWith("-macOS.tar.gz") && !name.endsWith(".sig"),
 );
 const windowsArtifact = files.find(
-  (name) => name.endsWith("-Windows-x64.msi") && !name.endsWith(".sig"),
+  (name) =>
+    name.endsWith("-Windows-x64-setup.exe") && !name.endsWith(".sig"),
 );
 
 addPlatform(["darwin-aarch64", "darwin-x86_64"], macArtifact);

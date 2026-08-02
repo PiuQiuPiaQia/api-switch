@@ -31,9 +31,9 @@ VV Code 使用 Tauri 的签名更新器安装 GitHub Release 中的更新包。�
 `0.0.1-beta.4`，并发布：
 
 - macOS 的 `.tar.gz` updater 包及 `.sig`；
-- Windows x64 的 `.msi` 及 `.sig`；
+- Windows x64 的 NSIS `setup.exe` 及 `.sig`；
 - 描述平台、下载地址和签名的 `latest.json`；
-- 原有的 `.dmg`、`.app.zip`、`setup.exe` 和 `.msi` 手动安装包。
+- 原有的 `.dmg`、`.app.zip` 和 `setup.exe` 手动安装包。
 
 在此功能合入前生成的 Beta 安装包没有 updater 插件、公钥和真实的 prerelease 版本号，
 因此无法自举更新。用户需要手动安装首个启用更新器的新 Beta；从该版本开始，后续 Beta

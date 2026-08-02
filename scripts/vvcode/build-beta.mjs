@@ -25,7 +25,7 @@ if (!existsSync(tauriCli)) {
 }
 
 const env = { ...process.env };
-const bundles = platform === "darwin" ? "app,dmg" : "msi,nsis";
+const bundles = platform === "darwin" ? "app,dmg" : "nsis";
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
 ).version;
@@ -50,7 +50,6 @@ const betaConfig = JSON.stringify({
   },
   bundle: {
     createUpdaterArtifacts,
-    ...(platform === "win32" ? { windows: { wix: { template: null } } } : {}),
   },
 });
 const cargoBin = join(homedir(), ".cargo", "bin");

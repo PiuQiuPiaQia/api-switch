@@ -14,7 +14,7 @@ test("generates beta updater entries for universal macOS and Windows x64", () =>
   const directory = mkdtempSync(join(tmpdir(), "vv-code-updater-test-"));
   const tag = "v0.0.1-beta.12";
   const mac = `VV-Code-${tag}-macOS.tar.gz`;
-  const windows = `VV-Code-${tag}-Windows-x64.msi`;
+  const windows = `VV-Code-${tag}-Windows-x64-setup.exe`;
   const output = join(directory, "latest.json");
 
   try {
