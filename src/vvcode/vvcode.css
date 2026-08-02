@@ -240,7 +240,7 @@ body:has(.vv-app-loading) {
   color: #6459d7;
   font-size: 11px;
   font-weight: 760;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
 }
 
 .vv-login__story h1 {
@@ -260,7 +260,7 @@ body:has(.vv-app-loading) {
 }
 
 .vv-login__story > p {
-  max-width: 540px;
+  max-width: 520px;
   margin: 23px 0 0;
   color: #6a6c81;
   font-size: 15px;
@@ -270,7 +270,7 @@ body:has(.vv-app-loading) {
 .vv-login__capabilities {
   display: grid;
   gap: 13px;
-  margin: 30px 0 0;
+  margin: 28px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -344,15 +344,8 @@ body:has(.vv-app-loading) {
   height: 39px;
 }
 
-.vv-login-card__heading > span {
-  color: #9192a5;
-  font-size: 11px;
-  font-weight: 680;
-  letter-spacing: 0.08em;
-}
-
 .vv-login-card__heading h2 {
-  margin: 5px 0 9px;
+  margin: 0 0 9px;
   color: #212239;
   font-size: 25px;
   font-weight: 750;
@@ -395,18 +388,17 @@ body:has(.vv-app-loading) {
   margin-bottom: 14px;
 }
 
-.vv-login-card > .vv-text-button {
-  width: 100%;
-  margin-top: 8px;
-  font-size: 12px;
+.vv-login-card__hint {
+  margin: 12px 0 0;
+  color: #9395a5;
+  font-size: 11px;
+  line-height: 1.55;
 }
 
-.vv-login-card__terms {
-  margin: 18px 0 0;
-  color: #a0a1b1;
-  font-size: 10px;
-  line-height: 1.6;
-  text-align: center;
+.vv-login-card > .vv-text-button {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 /* Shell */
@@ -4090,6 +4082,25 @@ body:has(.vv-app-loading) {
     padding: 14px 0 0;
     border-top: 1px solid #ebeaf3;
     border-left: 0;
+  }
+}
+
+@media (max-height: 620px) {
+  .vv-login__story {
+    padding-top: 60px;
+    padding-bottom: 54px;
+  }
+
+  .vv-login__story > .vv-brand {
+    top: 38px;
+  }
+
+  .vv-login__security {
+    bottom: 28px;
+  }
+
+  .vv-login-card {
+    padding: 30px;
   }
 }
 

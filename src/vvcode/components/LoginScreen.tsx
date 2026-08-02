@@ -9,11 +9,7 @@ interface LoginScreenProps {
   onPreview: () => void;
 }
 
-const capabilities = [
-  "一键检测 AI 开发工具环境",
-  "按分组配置模型并一键切换",
-  "密钥仅保存在本机受限目录",
-];
+const capabilities = ["检测本机工具环境", "切换可用模型分组"];
 
 export function LoginScreen({
   busy,
@@ -33,14 +29,14 @@ export function LoginScreen({
         <BrandMark />
         <div className="vv-login__eyebrow">
           <Orbit size={15} />
-          AI WORKSPACE
+          AI 开发工作台
         </div>
         <h1>
-          一次登录，
+          一个账号，
           <br />
-          <span>让每个 AI 工具就绪。</span>
+          <span>连接你的 AI 工具。</span>
         </h1>
-        <p>{PRODUCT.brand.tagline}。从环境检查到模型配置，用清晰的步骤完成。</p>
+        <p>集中管理 Claude Code、Codex CLI 等工具的模型配置。</p>
         <ul className="vv-login__capabilities">
           {capabilities.map((capability) => (
             <li key={capability}>
@@ -52,8 +48,8 @@ export function LoginScreen({
           ))}
         </ul>
         <div className="vv-login__security">
-          <LockKeyhole size={16} />
-          OAuth + PKCE + 本地回环授权，登录令牌仅由桌面端保存
+          <LockKeyhole size={15} />
+          登录凭证仅保存在本机
         </div>
       </section>
 
@@ -63,16 +59,15 @@ export function LoginScreen({
             <BrandMark compact />
           </div>
           <div className="vv-login-card__heading">
-            <span>欢迎使用</span>
             <h2>登录 {PRODUCT.brand.name}</h2>
-            <p>将在系统浏览器中完成中转站账号授权，成功后自动返回应用。</p>
+            <p>登录后即可同步可用分组并开始配置。</p>
           </div>
 
           {!configured && (
             <div className="vv-login-card__notice" role="status">
-              <strong>服务地址尚未编译配置</strong>
+              <strong>当前构建未配置登录服务</strong>
               <span>
-                开发/打包时设置 <code>VITE_NEWAPI_BASE_URL</code> 即可启用登录。
+                设置 <code>VITE_NEWAPI_BASE_URL</code> 后即可启用。
               </span>
             </div>
           )}
@@ -90,9 +85,13 @@ export function LoginScreen({
             onClick={onLogin}
           >
             {busy ? <Loader2 className="vv-spin" size={18} /> : null}
-            {busy ? "等待浏览器授权" : "使用中转站账号登录"}
+            {busy ? "等待登录完成…" : "一键登录"}
             {!busy && <ArrowRight size={18} />}
           </button>
+
+          <p className="vv-login-card__hint">
+            将在浏览器中完成授权，成功后自动返回
+          </p>
 
           {IS_PRODUCT_PREVIEW_AVAILABLE && !configured && (
             <button
@@ -103,10 +102,6 @@ export function LoginScreen({
               进入开发界面预览
             </button>
           )}
-
-          <p className="vv-login-card__terms">
-            继续即表示你同意服务条款与隐私政策。授权可随时在用户页面撤销。
-          </p>
         </div>
       </section>
     </main>
