@@ -2,8 +2,10 @@
 name = "vv-code"
 version = "3.19.1"
 description = "VV Code single-provider AI development workspace"
-authors = ["VV Code"]
+authors = ["VV Code Contributors"]
 license = "MIT"
+homepage = "https://vvcode.top/"
+repository = "https://github.com/PiuQiuPiaQia/api-switch"
 edition = "2021"
 rust-version = "1.85.0"
 

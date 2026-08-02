@@ -17,7 +17,25 @@
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],
-  "author": "Jason Young",
+  "author": "VV Code Contributors",
+  "contributors": [
+    {
+      "name": "Jason Young",
+      "url": "https://github.com/farion1231"
+    },
+    {
+      "name": "CC Switch contributors",
+      "url": "https://github.com/farion1231/cc-switch/graphs/contributors"
+    }
+  ],
+  "homepage": "https://vvcode.top/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PiuQiuPiaQia/api-switch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PiuQiuPiaQia/api-switch/issues"
+  },
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.0",

@@ -194,6 +194,26 @@ export function AccountPage({
           </div>
         </dl>
       </section>
+
+      <section className="vv-account-details">
+        <div className="vv-section-title">
+          <div>
+            <h2>开源许可</h2>
+            <p>
+              VV Code 基于{" "}
+              <a
+                href="https://github.com/farion1231/cc-switch"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                CC Switch
+              </a>{" "}
+              开源项目开发，并遵循 MIT License。感谢原作者 Jason Young
+              及所有上游贡献者。
+            </p>
+          </div>
+        </div>
+      </section>
     </PageLayout>
   );
 }

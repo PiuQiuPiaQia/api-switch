@@ -260,7 +260,7 @@ fn restore_official_configuration_internal(
 /// Restore the selected tool to its vendor/native configuration.
 ///
 /// Claude, Codex and Gemini switch through the same official seed providers
-/// used by CC Switch. Additive agent apps have no equivalent login provider,
+/// used by VV Code. Additive agent apps have no equivalent login provider,
 /// so only the VV Code provider and model references owned by it are removed.
 #[tauri::command]
 pub async fn restore_official_configuration(

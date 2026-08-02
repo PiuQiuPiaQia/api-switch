@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=VV Code
+Comment=AI development workspace for Claude Code, Codex, Gemini CLI and more
+Exec=vv-code
+Icon=com.vvcode.desktop
+Terminal=false
+Categories=Utility;Development;
+StartupNotify=true

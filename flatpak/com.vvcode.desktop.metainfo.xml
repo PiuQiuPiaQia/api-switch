@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.vvcode.desktop</id>
+  <name>VV Code</name>
+  <summary>AI development workspace for Claude Code, Codex, Gemini CLI and more</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>VV Code is a cross-platform desktop workspace for connecting and managing AI development tools.</p>
+    <ul>
+      <li>Manage multiple provider configurations and endpoints</li>
+      <li>One-click switch and sync to client live configurations</li>
+      <li>MCP servers and Prompt/Skills management</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.vvcode.desktop.desktop</launchable>
+  <provides>
+    <binary>vv-code</binary>
+  </provides>
+
+  <url type="homepage">https://vvcode.top/</url>
+  <url type="bugtracker">https://github.com/PiuQiuPiaQia/api-switch/issues</url>
+  <url type="vcs-browser">https://github.com/PiuQiuPiaQia/api-switch</url>
+</component>

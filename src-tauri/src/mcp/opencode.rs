@@ -1,10 +1,10 @@
 //! OpenCode MCP 同步和导入模块
 //!
-//! 本模块处理 CC Switch 统一 MCP 格式与 OpenCode 格式之间的转换。
+//! 本模块处理 VV Code 统一 MCP 格式与 OpenCode 格式之间的转换。
 //!
 //! ## 格式差异
 //!
-//! | CC Switch 统一格式    | OpenCode 格式       |
+//! | VV Code 统一格式    | OpenCode 格式       |
 //! |----------------------|---------------------|
 //! | `type: "stdio"`      | `type: "local"`     |
 //! | `command` + `args`   | `command: [cmd, ...args]` |
@@ -32,10 +32,10 @@ fn should_sync_opencode_mcp() -> bool {
 }
 
 // ============================================================================
-// Format Conversion: CC Switch → OpenCode
+// Format Conversion: VV Code → OpenCode
 // ============================================================================
 
-/// Convert CC Switch unified format to OpenCode format
+/// Convert VV Code unified format to OpenCode format
 ///
 /// Conversion rules:
 /// - `stdio` → `local`, command+args → command array, env → environment
@@ -104,10 +104,10 @@ pub fn convert_to_opencode_format(spec: &Value) -> Result<Value, AppError> {
 }
 
 // ============================================================================
-// Format Conversion: OpenCode → CC Switch
+// Format Conversion: OpenCode → VV Code
 // ============================================================================
 
-/// Convert OpenCode format to CC Switch unified format
+/// Convert OpenCode format to VV Code unified format
 ///
 /// Conversion rules:
 /// - `local` → `stdio`, command array → command+args, environment → env

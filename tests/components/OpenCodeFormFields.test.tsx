@@ -58,27 +58,27 @@ describe("OpenCodeFormFields", () => {
   it("surfaces existing provider headers", () => {
     renderOpenCodeForm({
       headers: {
-        "HTTP-Referer": "https://cc-switch.app",
-        "X-Title": "CC Switch",
+        "HTTP-Referer": "https://vvcode.top",
+        "X-Title": "VV Code",
       },
     });
 
     expect(screen.getByDisplayValue("HTTP-Referer")).toBeInTheDocument();
     expect(
-      screen.getByDisplayValue("https://cc-switch.app"),
+      screen.getByDisplayValue("https://vvcode.top"),
     ).toBeInTheDocument();
     expect(screen.getByDisplayValue("X-Title")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("CC Switch")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("VV Code")).toBeInTheDocument();
   });
 
   it("updates provider headers", () => {
     const onHeadersChange = vi.fn();
     renderOpenCodeForm({
-      headers: { "X-Title": "CC Switch" },
+      headers: { "X-Title": "VV Code" },
       onHeadersChange,
     });
 
-    fireEvent.change(screen.getByDisplayValue("CC Switch"), {
+    fireEvent.change(screen.getByDisplayValue("VV Code"), {
       target: { value: "OpenCode" },
     });
 
@@ -109,7 +109,7 @@ describe("OpenCodeFormFields", () => {
   it("removes provider headers", () => {
     const onHeadersChange = vi.fn();
     renderOpenCodeForm({
-      headers: { "X-Title": "CC Switch" },
+      headers: { "X-Title": "VV Code" },
       onHeadersChange,
     });
 

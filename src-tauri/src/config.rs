@@ -16,7 +16,7 @@ pub const PRODUCT_DATABASE_FILENAME: &str = "vv-code.db";
 /// - `dirs::home_dir()` 在 Windows 上使用 `SHGetKnownFolderPath(FOLDERID_Profile)`，
 ///   返回的是真实用户目录（类似 `C:\\Users\\Alice`），与 v3.10.2 行为一致。
 /// - 不要直接使用 `HOME` 环境变量：它可能由 Git/Cygwin/MSYS 等第三方工具注入，
-///   且不一定等于用户目录，可能导致 `.cc-switch/cc-switch.db` 路径变化，从而“看起来像数据丢失”。
+///   且不一定等于用户目录，可能导致 `.vv-code/vv-code.db` 路径变化，从而“看起来像数据丢失”。
 ///
 /// ## 测试隔离
 ///

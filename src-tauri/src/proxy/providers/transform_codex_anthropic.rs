@@ -2774,7 +2774,7 @@ mod tests {
             .filter_map(|block| block.get("text").and_then(Value::as_str))
             .all(|text| !text.contains("STRING_IMAGE_SENTINEL")));
         let serialized = response.to_string();
-        assert!(serialized.contains("[cc-switch: omitted 20000 bytes]"));
+        assert!(serialized.contains("[vv-code: omitted 20000 bytes]"));
         assert!(!serialized.contains(&"A".repeat(64)));
     }
 

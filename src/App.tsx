@@ -1193,7 +1193,7 @@ function App() {
               <div className="flex items-center gap-2">
                 <div className="relative inline-flex items-center">
                   <a
-                    href="https://ccswitch.io"
+                    href="https://vvcode.top"
                     target="_blank"
                     rel="noreferrer"
                     className={cn(
@@ -1203,7 +1203,7 @@ function App() {
                         : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300",
                     )}
                   >
-                    CC Switch
+                    VV Code
                   </a>
                 </div>
                 <Button

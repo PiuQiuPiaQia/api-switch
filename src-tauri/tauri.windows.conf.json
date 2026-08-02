@@ -4,7 +4,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "CC Switch",
+        "title": "VV Code",
         "titleBarStyle": "Visible",
         "visible": false,
         "minWidth": 900,

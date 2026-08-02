@@ -1,0 +1,19 @@
+VV Code Open Source Notice
+==========================
+
+VV Code is based on and contains substantial portions of CC Switch:
+
+  CC Switch
+  Copyright (c) 2025 Jason Young and CC Switch contributors
+  https://github.com/farion1231/cc-switch
+
+CC Switch is distributed under the MIT License. The original copyright and
+license notice are retained in the LICENSE file included with this source code
+and with distributed application bundles.
+
+Modifications and additional VV Code product work are copyright (c) 2026
+VV Code Contributors and are distributed under the same MIT License.
+
+VV Code is an independently maintained derivative and is not presented as an
+official release of the upstream CC Switch project. Product names and
+trademarks belong to their respective owners.
