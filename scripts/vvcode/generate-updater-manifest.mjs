@@ -1,5 +1,15 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const brandConfig = JSON.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL("../../src/vvcode/brand.config.json", import.meta.url),
+    ),
+    "utf8",
+  ),
+);
 
 const [assetsDir, tag, repository, output = "latest.json"] =
   process.argv.slice(2);
@@ -41,8 +51,7 @@ const macArtifact = files.find(
   (name) => name.endsWith("-macOS.tar.gz") && !name.endsWith(".sig"),
 );
 const windowsArtifact = files.find(
-  (name) =>
-    name.endsWith("-Windows-x64-setup.exe") && !name.endsWith(".sig"),
+  (name) => name.endsWith("-Windows-x64-setup.exe") && !name.endsWith(".sig"),
 );
 
 addPlatform(["darwin-aarch64", "darwin-x86_64"], macArtifact);
@@ -54,7 +63,7 @@ if (Object.keys(platforms).length === 0) {
 
 const manifest = {
   version,
-  notes: `VV Code ${tag}`,
+  notes: `${brandConfig.brand.name} ${tag}`,
   pub_date: new Date().toISOString(),
   platforms,
 };

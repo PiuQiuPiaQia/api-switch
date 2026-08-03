@@ -231,7 +231,11 @@ Stack Trace (Backtrace)
         drop(crash_log_guard);
 
         if saved {
-            eprintln!("\n[VV Code] Crash log saved to: {}", log_path.display());
+            eprintln!(
+                "\n[{}] Crash log saved to: {}",
+                env!("PRODUCT_DISPLAY_NAME"),
+                log_path.display()
+            );
         }
 
         // 同时输出到 stderr（便于开发调试）
@@ -250,7 +254,9 @@ mod tests {
     fn test_crash_log_path() {
         let path = get_crash_log_path();
         assert!(path.ends_with("crash.log"));
-        assert!(path.to_string_lossy().contains(".vv-code"));
+        assert!(path
+            .to_string_lossy()
+            .contains(env!("PRODUCT_CONFIG_DIR_NAME")));
     }
 
     #[test]

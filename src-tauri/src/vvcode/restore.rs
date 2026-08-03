@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::services::ProviderService;
 use crate::store::AppState;
 
-const MANAGED_PROVIDER_ID: &str = "vv-code-managed";
+use crate::vvcode::brand::MANAGED_PROVIDER_ID;
 
 fn official_seed_id(app_type: &AppType) -> Option<&'static str> {
     match app_type {

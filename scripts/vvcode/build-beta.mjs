@@ -29,6 +29,12 @@ const bundles = platform === "darwin" ? "app,dmg" : "nsis";
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
 ).version;
+const brandName = JSON.parse(
+  readFileSync(
+    join(process.cwd(), "src", "vvcode", "brand.config.json"),
+    "utf8",
+  ),
+).brand.name;
 const buildVersion =
   env.VV_CODE_BUILD_VERSION ||
   `${packageVersion}-beta.${env.GITHUB_RUN_NUMBER || "0"}`;
@@ -62,7 +68,7 @@ if (existsSync(cargoBin)) {
 
 if (platform === "darwin") {
   // Pre-release builds intentionally use an ad-hoc signature so contributors
-  // can package VV Code without an Apple Developer account.
+  // can package this derivative without an Apple Developer account.
   env.APPLE_SIGNING_IDENTITY = "-";
 
   for (const key of [
@@ -78,7 +84,7 @@ if (platform === "darwin") {
 }
 
 console.log(
-  `Building VV Code ${buildVersion} beta package for ${
+  `Building ${brandName} ${buildVersion} beta package for ${
     platform === "darwin" ? "macOS (ad-hoc signed)" : "Windows (unsigned)"
   }${createUpdaterArtifacts ? " with signed updater artifacts" : ""}...`,
 );

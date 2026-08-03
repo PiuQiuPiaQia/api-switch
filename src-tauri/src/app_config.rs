@@ -582,10 +582,11 @@ impl MultiAppConfig {
             has_providers && has_current && !has_apps
         });
         if is_v1 {
+            let config_path = config_path.display();
             return Err(AppError::localized(
                 "config.unsupported_v1",
-                "检测到旧版 v1 配置格式。当前版本已不再支持运行时自动迁移。\n\n解决方案：\n1. 安装 v3.2.x 版本进行一次性自动迁移\n2. 或手动编辑 ~/.vv-code/config.json，将顶层结构调整为：\n   {\"version\": 2, \"claude\": {...}, \"codex\": {...}, \"mcp\": {...}}\n\n",
-                "Detected legacy v1 config. Runtime auto-migration is no longer supported.\n\nSolutions:\n1. Install v3.2.x for one-time auto-migration\n2. Or manually edit ~/.vv-code/config.json to adjust the top-level structure:\n   {\"version\": 2, \"claude\": {...}, \"codex\": {...}, \"mcp\": {...}}\n\n",
+                format!("检测到旧版 v1 配置格式。当前版本已不再支持运行时自动迁移。\n\n解决方案：\n1. 安装 v3.2.x 版本进行一次性自动迁移\n2. 或手动编辑 {config_path}，将顶层结构调整为：\n   {{\"version\": 2, \"claude\": {{...}}, \"codex\": {{...}}, \"mcp\": {{...}}}}\n\n"),
+                format!("Detected legacy v1 config. Runtime auto-migration is no longer supported.\n\nSolutions:\n1. Install v3.2.x for one-time auto-migration\n2. Or manually edit {config_path} to adjust the top-level structure:\n   {{\"version\": 2, \"claude\": {{...}}, \"codex\": {{...}}, \"mcp\": {{...}}}}\n\n"),
             ));
         }
 

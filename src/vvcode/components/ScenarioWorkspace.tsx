@@ -325,7 +325,10 @@ export function ScenarioWorkspace({
         onSelectedGroupChange?.(appliedGroup.id);
       })
       .catch((error) => {
-        console.warn("[VV Code] Failed to load managed provider:", error);
+        console.warn(
+          `[${PRODUCT.brand.name}] Failed to load managed provider:`,
+          error,
+        );
         if (!cancelled) setExistingManagedProvider(null);
       })
       .finally(() => {
@@ -505,7 +508,7 @@ export function ScenarioWorkspace({
       await newApiApi.restoreOfficialConfiguration(scenario.appId);
       toast.success(
         scenario.appId === "openclaw" || scenario.appId === "hermes"
-          ? `${scenario.name} 已移除 VV Code 托管配置`
+          ? `${scenario.name} 已移除 ${PRODUCT.brand.name} 托管配置`
           : `${scenario.name} 已恢复官方默认配置`,
       );
     } catch (error) {

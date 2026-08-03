@@ -98,7 +98,7 @@ pub struct WebDavSyncStatus {
 }
 
 fn default_remote_root() -> String {
-    "vv-code-sync".to_string()
+    env!("PRODUCT_SYNC_ROOT").to_string()
 }
 fn default_profile() -> String {
     "default".to_string()

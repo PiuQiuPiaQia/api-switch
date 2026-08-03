@@ -13,6 +13,7 @@ import {
   type FetchedModel,
 } from "@/lib/api/model-fetch";
 import { extractCodexModelName } from "@/utils/providerConfigUtils";
+import { BRAND_CONFIG } from "../brand";
 import {
   applyClaudeCoreModelRoutes,
   applyAgentModelCatalog,
@@ -147,7 +148,10 @@ export function ManagedProviderCoreForm({
         }
       })
       .catch((error) => {
-        console.warn("[VV Code] Failed to fetch provider models:", error);
+        console.warn(
+          `[${BRAND_CONFIG.brand.name}] Failed to fetch provider models:`,
+          error,
+        );
         showFetchModelsError(error, t);
       })
       .finally(() => setIsFetchingModels(false));

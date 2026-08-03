@@ -200,13 +200,13 @@ export function AccountPage({
           <div>
             <h2>开源许可</h2>
             <p>
-              VV Code 基于{" "}
+              {PRODUCT.brand.name} 基于{" "}
               <a
-                href="https://github.com/farion1231/cc-switch"
+                href={PRODUCT.upstream.url}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                CC Switch
+                {PRODUCT.upstream.name}
               </a>{" "}
               开源项目开发，并遵循 MIT License。感谢原作者 Jason Young
               及所有上游贡献者。

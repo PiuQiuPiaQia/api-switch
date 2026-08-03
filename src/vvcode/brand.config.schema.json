@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:api-switch:brand-config-schema",
+  "title": "Derivative brand configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "brand",
+    "distribution",
+    "service",
+    "repository",
+    "upstream",
+    "compatibility"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "tagline", "description", "websiteUrl"],
+      "properties": {
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "tagline": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "$ref": "#/$defs/nonEmptyString" },
+        "websiteUrl": { "$ref": "#/$defs/httpUrl" }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageName",
+        "publisherName",
+        "bundleIdentifier",
+        "configDirName",
+        "databaseFileName",
+        "logFileName",
+        "syncRoot",
+        "themeStorageKey",
+        "userAgent"
+      ],
+      "properties": {
+        "packageName": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "publisherName": { "$ref": "#/$defs/nonEmptyString" },
+        "bundleIdentifier": { "type": "string", "pattern": "^[A-Za-z0-9.-]+$" },
+        "configDirName": {
+          "type": "string",
+          "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "databaseFileName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.db$"
+        },
+        "logFileName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.log$"
+        },
+        "syncRoot": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "themeStorageKey": { "type": "string", "minLength": 1 },
+        "userAgent": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultBaseUrl"],
+      "properties": {
+        "defaultBaseUrl": { "$ref": "#/$defs/httpUrl" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "issuesUrl", "releasesUrl", "githubReleasesApiUrl"],
+      "properties": {
+        "url": { "$ref": "#/$defs/httpUrl" },
+        "issuesUrl": { "$ref": "#/$defs/httpUrl" },
+        "releasesUrl": { "$ref": "#/$defs/httpUrl" },
+        "githubReleasesApiUrl": { "$ref": "#/$defs/httpUrl" }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url"],
+      "properties": {
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "url": { "$ref": "#/$defs/httpUrl" }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managedProviderId"],
+      "properties": {
+        "managedProviderId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "httpUrl": { "type": "string", "pattern": "^https?://" }
+  }
+}

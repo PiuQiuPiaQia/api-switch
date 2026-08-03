@@ -43,6 +43,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DirectChatTransport, ToolLoopAgent } from "ai";
+import { BRAND_CONFIG } from "../brand";
 import type { NewApiGroup } from "../types";
 import type { ChatMessage, ChatThreadRecord } from "./storage";
 
@@ -449,7 +450,7 @@ export function ChatRuntime({
 }: ChatRuntimeProps) {
   const transport = useMemo(() => {
     const provider = createOpenAICompatible({
-      name: "vv-code",
+      name: BRAND_CONFIG.distribution.packageName,
       baseURL: resolveChatApiBaseUrl(group.baseUrl),
       apiKey: group.apiKey,
       includeUsage: true,

@@ -6,11 +6,11 @@ import type {
 } from "@/types";
 
 /**
- * Hermes Agent configuration API (VV Code side).
+ * Hermes Agent configuration API (desktop app side).
  *
- * VV Code intentionally keeps its Hermes surface minimal — deep configuration
+ * The desktop app intentionally keeps its Hermes surface minimal — deep configuration
  * (model, agent behavior, env vars, skills, cron, logs, analytics) lives in
- * the Hermes Web UI at http://127.0.0.1:9119. VV Code only reads the `model`
+ * the Hermes Web UI at http://127.0.0.1:9119. The app only reads the `model`
  * section to highlight the active provider and launches the Hermes Web UI for
  * everything else. Writes to `model` happen implicitly via
  * `apply_switch_defaults` when the user switches providers.

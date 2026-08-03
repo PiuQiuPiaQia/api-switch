@@ -671,7 +671,7 @@ export function OpenCodeFormFields({
                       handleHeaderValueChange(key, e.target.value)
                     }
                     placeholder={t("opencode.headerValuePlaceholder", {
-                      defaultValue: "VV Code",
+                      defaultValue: "{{brandName}}",
                     })}
                     className="flex-1"
                   />

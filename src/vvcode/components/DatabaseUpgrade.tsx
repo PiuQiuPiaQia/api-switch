@@ -4,6 +4,7 @@ import { exit } from "@tauri-apps/plugin-process";
 import { AlertTriangle, FolderOpen, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppUpdateControl } from "./AppUpdateControl";
+import { BRAND_CONFIG } from "../brand";
 
 interface DatabaseUpgradeProps {
   payload: {
@@ -16,7 +17,7 @@ interface DatabaseUpgradeProps {
 }
 
 /**
- * 数据库版本过新时进入只读恢复界面。这里只允许安装 VV Code Release
+ * 数据库版本过新时进入只读恢复界面。这里只允许安装当前品牌 Release
  * 通道中通过 minisign 校验的更新包，不会跳转到上游项目。
  */
 export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
@@ -34,10 +35,11 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
               {t("dbUpgrade.title", "数据库版本过新")}
             </h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              {t(
-                "dbUpgrade.descriptionVvCode",
-                "当前数据由更新版本的 VV Code 创建。为保护配置，本版本不会继续写入数据库；请安装兼容版本后再打开。",
-              )}
+              {t("dbUpgrade.descriptionVvCode", {
+                brandName: BRAND_CONFIG.brand.name,
+                defaultValue:
+                  "当前数据由更新版本的 {{brandName}} 创建。为保护配置，本版本不会继续写入数据库；请安装兼容版本后再打开。",
+              })}
             </p>
             {payload.db_version != null &&
               payload.supported_version != null && (
@@ -65,10 +67,12 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
         </div>
 
         <p className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm leading-6 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
-          {t(
-            "dbUpgrade.releaseHintVvCode",
-            "请先检查并安装 VV Code 更新；若仍不兼容，再从 VV Code 的 GitHub 发布页获取安装包。不要使用 CC Switch 的更新包覆盖本应用。",
-          )}
+          {t("dbUpgrade.releaseHintVvCode", {
+            brandName: BRAND_CONFIG.brand.name,
+            upstreamName: BRAND_CONFIG.upstream.name,
+            defaultValue:
+              "请先检查并安装 {{brandName}} 更新；若仍不兼容，再从 {{brandName}} 的发布页获取安装包。不要使用 {{upstreamName}} 的更新包覆盖本应用。",
+          })}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">

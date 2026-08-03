@@ -4,6 +4,7 @@
 //! modules must not depend back on this directory; `lib.rs` is the composition
 //! root that registers the product commands and runtime policy.
 
+pub(crate) mod brand;
 pub(crate) mod edition;
 mod newapi;
 mod restore;

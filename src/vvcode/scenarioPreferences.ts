@@ -1,7 +1,8 @@
 import { normalizeProbeUrl } from "./initialization";
 import type { ScenarioId } from "./types";
+import { BRAND_CONFIG } from "./brand";
 
-const STORAGE_PREFIX = "vv-code:scenario:v1";
+const STORAGE_PREFIX = `${BRAND_CONFIG.distribution.packageName}:scenario:v1`;
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;

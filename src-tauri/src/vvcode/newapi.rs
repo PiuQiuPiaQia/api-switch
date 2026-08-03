@@ -807,43 +807,40 @@ async fn receive_loopback_callback(
         let target = match read_loopback_target(&mut stream).await {
             Ok(target) => target,
             Err(error) => {
-                write_loopback_page(
-                    &mut stream,
-                    "400 Bad Request",
-                    "VV Code 登录回调无效",
-                    "请返回 VV Code 后重新发起登录。",
-                )
-                .await;
+                let title = format!("{} 登录回调无效", crate::vvcode::brand::DISPLAY_NAME);
+                let message = format!(
+                    "请返回 {} 后重新发起登录。",
+                    crate::vvcode::brand::DISPLAY_NAME
+                );
+                write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
                 return Err(error);
             }
         };
         let Some(callback) = parse_loopback_oauth_target(&target) else {
-            write_loopback_page(
-                &mut stream,
-                "404 Not Found",
-                "页面不存在",
-                "此本地地址仅用于接收 VV Code 登录回调。",
-            )
-            .await;
+            let message = format!(
+                "此本地地址仅用于接收 {} 登录回调。",
+                crate::vvcode::brand::DISPLAY_NAME
+            );
+            write_loopback_page(&mut stream, "404 Not Found", "页面不存在", &message).await;
             continue;
         };
 
         if callback.state.as_deref() != Some(expected_state) {
-            write_loopback_page(
-                &mut stream,
-                "400 Bad Request",
-                "VV Code 登录校验失败",
-                "登录状态不匹配，请返回 VV Code 后重新尝试。",
-            )
-            .await;
+            let title = format!("{} 登录校验失败", crate::vvcode::brand::DISPLAY_NAME);
+            let message = format!(
+                "登录状态不匹配，请返回 {} 后重新尝试。",
+                crate::vvcode::brand::DISPLAY_NAME
+            );
+            write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
             return Err("OAuth state 校验失败，请重新登录".to_string());
         }
 
         if callback.error.is_some() {
+            let title = format!("{} 登录未完成", crate::vvcode::brand::DISPLAY_NAME);
             write_loopback_page(
                 &mut stream,
                 "400 Bad Request",
-                "VV Code 登录未完成",
+                &title,
                 "授权已取消或服务端拒绝了请求，请返回应用查看详情。",
             )
             .await;
@@ -852,21 +849,19 @@ async fn receive_loopback_callback(
             .as_deref()
             .is_some_and(|code| !code.trim().is_empty())
         {
-            write_loopback_page(
-                &mut stream,
-                "200 OK",
-                "登录信息已返回 VV Code",
-                "可以关闭此页面并回到应用，VV Code 正在完成登录。",
-            )
-            .await;
+            let title = format!("登录信息已返回 {}", crate::vvcode::brand::DISPLAY_NAME);
+            let message = format!(
+                "可以关闭此页面并回到应用，{} 正在完成登录。",
+                crate::vvcode::brand::DISPLAY_NAME
+            );
+            write_loopback_page(&mut stream, "200 OK", &title, &message).await;
         } else {
-            write_loopback_page(
-                &mut stream,
-                "400 Bad Request",
-                "VV Code 登录回调不完整",
-                "回调中缺少授权信息，请返回 VV Code 后重新尝试。",
-            )
-            .await;
+            let title = format!("{} 登录回调不完整", crate::vvcode::brand::DISPLAY_NAME);
+            let message = format!(
+                "回调中缺少授权信息，请返回 {} 后重新尝试。",
+                crate::vvcode::brand::DISPLAY_NAME
+            );
+            write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
         }
         return Ok(callback);
     }

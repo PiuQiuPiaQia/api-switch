@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
-pub const PROFILE_NAME: &str = "VV Code";
+pub const PROFILE_NAME: &str = env!("PRODUCT_DISPLAY_NAME");
 
 #[cfg(any(target_os = "macos", windows, test))]
 const CONFIG_FILE: &str = "claude_desktop_config.json";

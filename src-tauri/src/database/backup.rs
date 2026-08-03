@@ -13,7 +13,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
-const VV_CODE_SQL_EXPORT_HEADER: &str = "-- VV Code SQLite 导出";
+const PRODUCT_SQL_EXPORT_HEADER: &str =
+    concat!("-- ", env!("PRODUCT_DISPLAY_NAME"), " SQLite 导出");
+const LEGACY_VV_CODE_SQL_EXPORT_HEADER: &str = "-- VV Code SQLite 导出";
 const LEGACY_CC_SWITCH_SQL_EXPORT_HEADER: &str = "-- CC Switch SQLite 导出";
 
 /// `dump_sql` 会写出的 PRAGMA。其余 PRAGMA 一律拒绝——`temp_store_directory`
@@ -222,7 +224,8 @@ impl Database {
 
     fn validate_vv_code_sql_export(sql: &str) -> Result<(), AppError> {
         let trimmed = sql.trim_start();
-        if trimmed.starts_with(VV_CODE_SQL_EXPORT_HEADER)
+        if trimmed.starts_with(PRODUCT_SQL_EXPORT_HEADER)
+            || trimmed.starts_with(LEGACY_VV_CODE_SQL_EXPORT_HEADER)
             || trimmed.starts_with(LEGACY_CC_SWITCH_SQL_EXPORT_HEADER)
         {
             return Ok(());
@@ -230,8 +233,14 @@ impl Database {
 
         Err(AppError::localized(
             "backup.sql.invalid_format",
-            "仅支持导入由 VV Code 或上游 CC Switch 导出的 SQL 备份文件。",
-            "Only SQL backups exported by VV Code or upstream CC Switch are supported.",
+            format!(
+                "仅支持导入由 {} 或上游 CC Switch 导出的 SQL 备份文件。",
+                env!("PRODUCT_DISPLAY_NAME")
+            ),
+            format!(
+                "Only SQL backups exported by {} or upstream CC Switch are supported.",
+                env!("PRODUCT_DISPLAY_NAME")
+            ),
         ))
     }
 
@@ -451,7 +460,7 @@ impl Database {
             .unwrap_or(0);
 
         output.push_str(&format!(
-            "{VV_CODE_SQL_EXPORT_HEADER}\n-- 生成时间: {timestamp}\n-- user_version: {user_version}\n"
+            "{PRODUCT_SQL_EXPORT_HEADER}\n-- 生成时间: {timestamp}\n-- user_version: {user_version}\n"
         ));
         output.push_str("PRAGMA foreign_keys=OFF;\n");
         output.push_str(&format!("PRAGMA user_version={user_version};\n"));
@@ -770,7 +779,7 @@ mod tests {
             // 真正拦下来的必须是 authorizer。
             let malicious = format!(
                 "{}\n{}\n",
-                super::VV_CODE_SQL_EXPORT_HEADER,
+                super::PRODUCT_SQL_EXPORT_HEADER,
                 template.replace("{path}", &target.display().to_string())
             );
 
@@ -832,7 +841,7 @@ mod tests {
         }
 
         let exported = source.export_sql_string()?.replacen(
-            super::VV_CODE_SQL_EXPORT_HEADER,
+            super::PRODUCT_SQL_EXPORT_HEADER,
             super::LEGACY_CC_SWITCH_SQL_EXPORT_HEADER,
             1,
         );

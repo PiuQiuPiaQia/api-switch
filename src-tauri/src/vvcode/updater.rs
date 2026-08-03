@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-const GITHUB_RELEASES_API: &str =
-    "https://api.github.com/repos/PiuQiuPiaQia/api-switch/releases?per_page=30";
 const UPDATE_MANIFEST_ASSET: &str = "latest.json";
 const UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -117,10 +115,13 @@ fn select_release<'a>(
 
 async fn fetch_releases() -> Result<Vec<GithubRelease>, String> {
     let response = crate::proxy::http_client::get()
-        .get(GITHUB_RELEASES_API)
+        .get(crate::vvcode::brand::GITHUB_RELEASES_API_URL)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "vv-code-updater")
+        .header(
+            "User-Agent",
+            format!("{}-updater", crate::vvcode::brand::USER_AGENT),
+        )
         .timeout(UPDATE_TIMEOUT)
         .send()
         .await
@@ -212,7 +213,11 @@ pub async fn vvcode_install_update_and_restart(app: AppHandle) -> Result<bool, S
         return Ok(false);
     };
 
-    log::info!("开始下载 VV Code 更新: {}", update.version);
+    log::info!(
+        "开始下载 {} 更新: {}",
+        crate::vvcode::brand::DISPLAY_NAME,
+        update.version
+    );
     let progress_handle = app.clone();
     let mut downloaded = 0_u64;
     let bytes = update
@@ -232,7 +237,11 @@ pub async fn vvcode_install_update_and_restart(app: AppHandle) -> Result<bool, S
         .await
         .map_err(|error| format!("下载或校验更新失败: {error}"))?;
 
-    log::info!("开始安装 VV Code 更新: {}", update.version);
+    log::info!(
+        "开始安装 {} 更新: {}",
+        crate::vvcode::brand::DISPLAY_NAME,
+        update.version
+    );
 
     #[cfg(target_os = "windows")]
     {
@@ -242,7 +251,10 @@ pub async fn vvcode_install_update_and_restart(app: AppHandle) -> Result<bool, S
         crate::destroy_single_instance_lock(&app);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         update.install(bytes).map_err(|error| {
-            format!("Windows 更新安装失败: {error}。请重新打开 VV Code 后重试。")
+            format!(
+                "Windows 更新安装失败: {error}。请重新打开 {} 后重试。",
+                crate::vvcode::brand::DISPLAY_NAME
+            )
         })?;
         Ok(true)
     }
@@ -255,7 +267,10 @@ pub async fn vvcode_install_update_and_restart(app: AppHandle) -> Result<bool, S
 
         crate::save_window_state_before_exit(&app);
         crate::cleanup_before_exit(&app).await;
-        log::info!("VV Code 更新安装完成，正在重启");
+        log::info!(
+            "{} 更新安装完成，正在重启",
+            crate::vvcode::brand::DISPLAY_NAME
+        );
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         crate::restart_process(&app);
     }

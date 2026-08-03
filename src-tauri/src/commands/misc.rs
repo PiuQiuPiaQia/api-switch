@@ -53,12 +53,13 @@ pub async fn copy_text_to_clipboard(text: String) -> Result<bool, String> {
 /// 检查更新
 #[tauri::command]
 pub async fn check_for_updates(handle: AppHandle) -> Result<bool, String> {
+    let releases_url = format!(
+        "{}/latest",
+        env!("PRODUCT_RELEASES_URL").trim_end_matches('/')
+    );
     handle
         .opener()
-        .open_url(
-            "https://github.com/PiuQiuPiaQia/api-switch/releases/latest",
-            None::<String>,
-        )
+        .open_url(releases_url, None::<String>)
         .map_err(|e| format!("打开更新页面失败: {e}"))?;
 
     Ok(true)
@@ -1011,7 +1012,7 @@ async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Op
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
     match client
         .get(&url)
-        .header("User-Agent", "vv-code")
+        .header("User-Agent", env!("PRODUCT_USER_AGENT"))
         .header("Accept", "application/vnd.github+json")
         .send()
         .await

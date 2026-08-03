@@ -321,7 +321,7 @@ pub fn run() {
             app_store::refresh_app_config_dir_override(app.handle());
             panic_hook::init_app_config_dir(crate::config::get_app_config_dir());
 
-            // 初始化日志（输出到 <app_config_dir>/logs/vv-code.log）
+            // 初始化日志（文件名由品牌配置提供）
             {
                 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
@@ -346,7 +346,12 @@ pub fn run() {
                             Target::new(TargetKind::Stdout),
                             Target::new(TargetKind::Folder {
                                 path: log_dir,
-                                file_name: Some("vv-code".into()),
+                                file_name: Some(
+                                    env!("PRODUCT_LOG_FILENAME")
+                                        .strip_suffix(".log")
+                                        .unwrap_or(env!("PRODUCT_LOG_FILENAME"))
+                                        .into(),
+                                ),
                             }),
                         ])
                         // KeepSome(4) 保留 4 个轮转归档，加上当前文件最多约 100 MiB。
@@ -359,7 +364,11 @@ pub fn run() {
 
                 // 用户配置存在数据库中，数据库尚未打开时使用保守的 Info 级别。
                 log::set_max_level(log::LevelFilter::Info);
-                log::info!("=== VV Code v{} started ===", env!("CARGO_PKG_VERSION"));
+                log::info!(
+                    "=== {} v{} started ===",
+                    env!("PRODUCT_DISPLAY_NAME"),
+                    env!("CARGO_PKG_VERSION")
+                );
             }
 
             // 首次读取覆盖路径时 logger 尚未可用；此处重放一次，
@@ -900,7 +909,7 @@ pub fn run() {
 
             // 构建托盘
             let mut tray_builder = TrayIconBuilder::with_id(vvcode::tray::TRAY_ID)
-                .tooltip("VV Code") // 鼠标悬停提示
+                .tooltip(env!("PRODUCT_DISPLAY_NAME")) // 鼠标悬停提示
                 .on_tray_icon_event(|tray, event| match event {
                     // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
                     // 让用户下一次（或快速打开菜单的那一刻）看到较新的数字。
@@ -1499,17 +1508,19 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
         format!(
             "从旧版本迁移配置时发生错误：\n\n{error}\n\n\
             您的数据尚未丢失，旧配置文件仍然保留。\n\
-            建议回退到旧版本 VV Code 以保护数据。\n\n\
+            建议回退到旧版本 {product_name} 以保护数据。\n\n\
             点击「重试」重新尝试迁移\n\
-            点击「退出」关闭程序（可回退版本后重新打开）"
+            点击「退出」关闭程序（可回退版本后重新打开）",
+            product_name = env!("PRODUCT_DISPLAY_NAME")
         )
     } else {
         format!(
             "An error occurred while migrating configuration:\n\n{error}\n\n\
             Your data is NOT lost - the old config file is still preserved.\n\
-            Consider rolling back to an older VV Code version.\n\n\
+            Consider rolling back to an older {product_name} version.\n\n\
             Click 'Retry' to attempt migration again\n\
-            Click 'Exit' to close the program"
+            Click 'Exit' to close the program",
+            product_name = env!("PRODUCT_DISPLAY_NAME")
         )
     };
 
@@ -1557,12 +1568,13 @@ fn show_database_init_error_dialog(
             您的数据尚未丢失，应用不会自动删除数据库文件。\n\
             常见原因包括：数据库版本过新、文件损坏、权限不足、磁盘空间不足等。\n\n\
             建议：\n\
-            1) 先备份整个配置目录（包含 vv-code.db）\n\
+            1) 先备份整个配置目录（包含 {database_file}）\n\
             2) 如果提示“数据库版本过新”，请升级到更新版本\n\
             3) 如果刚升级出现异常，可回退旧版本导出/备份后再升级\n\n\
             点击「重试」重新尝试初始化\n\
             点击「退出」关闭程序",
-            db = db_path.display()
+            db = db_path.display(),
+            database_file = crate::config::PRODUCT_DATABASE_FILENAME
         )
     } else {
         format!(
@@ -1571,12 +1583,14 @@ fn show_database_init_error_dialog(
             Your data is NOT lost - the app will not delete the database automatically.\n\
             Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
             Suggestions:\n\
-            1) Back up the entire config directory (including vv-code.db)\n\
-            2) If you see “database version is newer”, please upgrade VV Code\n\
+            1) Back up the entire config directory (including {database_file})\n\
+            2) If you see “database version is newer”, please upgrade {product_name}\n\
             3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
             Click 'Retry' to attempt initialization again\n\
             Click 'Exit' to close the program",
-            db = db_path.display()
+            db = db_path.display(),
+            database_file = crate::config::PRODUCT_DATABASE_FILENAME,
+            product_name = env!("PRODUCT_DISPLAY_NAME")
         )
     };
 

@@ -1,7 +1,8 @@
 import { normalizeProbeUrl } from "./initialization";
 import type { NewApiInfoRoute } from "./types";
+import { BRAND_CONFIG } from "./brand";
 
-const STORAGE_PREFIX = "vv-code:api-info:v1";
+const STORAGE_PREFIX = `${BRAND_CONFIG.distribution.packageName}:api-info:v1`;
 
 function storageKey(serverUrl: string, field: "routes" | "selected"): string {
   return `${STORAGE_PREFIX}:${encodeURIComponent(normalizeProbeUrl(serverUrl))}:${field}`;

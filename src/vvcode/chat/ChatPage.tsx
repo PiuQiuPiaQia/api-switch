@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { newApiApi } from "../api";
+import { BRAND_CONFIG } from "../brand";
 import type { NewApiBootstrap, NewApiGroup } from "../types";
 import { ChatRuntime, type ChatRuntimeModel } from "./ChatRuntime";
 import {
@@ -283,7 +284,10 @@ export function ChatPage({
       })
       .catch((error) => {
         if (cancelled) return;
-        console.warn("[VV Code] Failed to fetch chat models:", error);
+        console.warn(
+          `[${BRAND_CONFIG.brand.name}] Failed to fetch chat models:`,
+          error,
+        );
         setModelStates((current) => {
           if (current[group.id]?.requestKey !== requestKey) return current;
           return {

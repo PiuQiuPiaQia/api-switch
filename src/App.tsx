@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_RUNTIME } from "@/config/productRuntime";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { invoke } from "@tauri-apps/api/core";
@@ -1193,7 +1194,7 @@ function App() {
               <div className="flex items-center gap-2">
                 <div className="relative inline-flex items-center">
                   <a
-                    href="https://vvcode.top"
+                    href={PRODUCT_RUNTIME.websiteUrl}
                     target="_blank"
                     rel="noreferrer"
                     className={cn(
@@ -1203,7 +1204,7 @@ function App() {
                         : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300",
                     )}
                   >
-                    VV Code
+                    {PRODUCT_RUNTIME.name}
                   </a>
                 </div>
                 <Button

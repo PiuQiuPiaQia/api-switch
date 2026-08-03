@@ -32,6 +32,7 @@ import {
   detectCodingPlanProvider,
 } from "@/config/codingPlanProviders";
 import { formatUsageDataSummary } from "@/utils/usageDisplay";
+import { PRODUCT_RUNTIME } from "@/config/productRuntime";
 
 /**
  * 火山引擎账号级 AccessKey 的密钥管理页（IAM）。
@@ -75,7 +76,7 @@ const generatePresetTemplates = (
     method: "GET",
     headers: {
       "Authorization": "Bearer {{apiKey}}",
-      "User-Agent": "vv-code/1.0"
+      "User-Agent": "${PRODUCT_RUNTIME.userAgent}/1.0"
     }
   },
   extractor: function(response) {
@@ -94,7 +95,7 @@ const generatePresetTemplates = (
     headers: {
       "Content-Type": "application/json",
       "Authorization": "Bearer {{accessToken}}",
-      "User-Agent": "vv-code/1.0",
+      "User-Agent": "${PRODUCT_RUNTIME.userAgent}/1.0",
       "New-Api-User": "{{userId}}"
     },
   },
@@ -1564,7 +1565,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
     method: "POST",
     headers: {
       "Authorization": "Bearer {{apiKey}}",
-      "User-Agent": "vv-code/1.0"
+      "User-Agent": "${PRODUCT_RUNTIME.userAgent}/1.0"
     }
   },
   extractor: function(response) {

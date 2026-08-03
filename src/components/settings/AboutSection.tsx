@@ -35,6 +35,7 @@ import { useUpdate } from "@/contexts/UpdateContext";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import appIcon from "@/vvcode/assets/app-icon.png";
+import { PRODUCT } from "@/vvcode/config";
 import { APP_ICON_MAP } from "@/config/appConfig";
 import type { AppId } from "@/lib/api/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -436,14 +437,12 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
           : "";
 
       if (!displayVersion) {
-        await settingsApi.openExternal(
-          "https://github.com/PiuQiuPiaQia/api-switch/releases",
-        );
+        await settingsApi.openExternal(PRODUCT.repository.releasesUrl);
         return;
       }
 
       await settingsApi.openExternal(
-        `https://github.com/PiuQiuPiaQia/api-switch/releases/tag/${displayVersion}`,
+        `${PRODUCT.repository.releasesUrl}/tag/${displayVersion}`,
       );
     } catch (error) {
       console.error("[AboutSection] Failed to open release notes", error);
@@ -836,9 +835,13 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-2">
-                <img src={appIcon} alt="VV Code" className="h-5 w-5" />
+                <img
+                  src={appIcon}
+                  alt={PRODUCT.brand.name}
+                  className="h-5 w-5"
+                />
                 <h4 className="text-lg font-semibold text-foreground">
-                  VV Code
+                  {PRODUCT.brand.name}
                 </h4>
               </div>
               <div className="flex items-center gap-2">
@@ -867,7 +870,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => settingsApi.openExternal("https://vvcode.top")}
+              onClick={() => settingsApi.openExternal(PRODUCT.brand.websiteUrl)}
               className="h-8 gap-1.5 text-xs"
             >
               <Globe className="h-3.5 w-3.5" />
@@ -877,11 +880,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                settingsApi.openExternal(
-                  "https://github.com/PiuQiuPiaQia/api-switch",
-                )
-              }
+              onClick={() => settingsApi.openExternal(PRODUCT.repository.url)}
               className="h-8 gap-1.5 text-xs"
             >
               <Github className="h-3.5 w-3.5" />
@@ -932,17 +931,13 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          VV Code 基于{" "}
+          {PRODUCT.brand.name} 基于{" "}
           <button
             type="button"
             className="underline underline-offset-2 hover:text-foreground"
-            onClick={() =>
-              settingsApi.openExternal(
-                "https://github.com/farion1231/cc-switch",
-              )
-            }
+            onClick={() => settingsApi.openExternal(PRODUCT.upstream.url)}
           >
-            CC Switch
+            {PRODUCT.upstream.name}
           </button>{" "}
           开源项目开发，遵循 MIT License。感谢 Jason Young 与所有上游贡献者。
         </p>

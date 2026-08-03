@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { BRAND_CONFIG } from "../brand";
 import {
   checkForVvCodeUpdate,
   getCurrentVvCodeVersion,
@@ -51,9 +52,10 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
         setAppVersion(nextUpdate.currentVersion);
         setPhase("available");
         if (!manual) {
-          toast.info(`发现 VV Code ${nextUpdate.availableVersion}`, {
-            description: "点击顶部的更新按钮即可下载并安装。",
-          });
+          toast.info(
+            `发现 ${BRAND_CONFIG.brand.name} ${nextUpdate.availableVersion}`,
+            { description: "点击顶部的更新按钮即可下载并安装。" },
+          );
         }
         return;
       }
@@ -130,7 +132,7 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
     if (!update || phase === "installing") return;
 
     const accepted = await confirm(
-      `将下载并安装 VV Code ${update.availableVersion}，安装完成后应用会自动重启。`,
+      `将下载并安装 ${BRAND_CONFIG.brand.name} ${update.availableVersion}，安装完成后应用会自动重启。`,
       {
         title: "安装软件更新",
         kind: "info",
@@ -188,7 +190,7 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
           ? `当前版本：${formatVersion(update.currentVersion)}，可用版本：${formatVersion(update.availableVersion)}`
           : currentVersion
             ? `当前版本：${formatVersion(currentVersion)}`
-            : "检查 VV Code 更新"
+            : `检查 ${BRAND_CONFIG.brand.name} 更新`
       }
     >
       {displayVersion && (

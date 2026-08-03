@@ -6,8 +6,8 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::error::AppError;
 
-pub const PRODUCT_CONFIG_DIR_NAME: &str = ".vv-code";
-pub const PRODUCT_DATABASE_FILENAME: &str = "vv-code.db";
+pub const PRODUCT_CONFIG_DIR_NAME: &str = env!("PRODUCT_CONFIG_DIR_NAME");
+pub const PRODUCT_DATABASE_FILENAME: &str = env!("PRODUCT_DATABASE_FILENAME");
 
 /// 获取用户主目录，带回退和日志
 ///

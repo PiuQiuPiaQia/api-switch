@@ -1,0 +1,37 @@
+{
+  "$schema": "./brand.config.schema.json",
+  "schemaVersion": 1,
+  "brand": {
+    "name": "VV Code",
+    "tagline": "一个账号，连接你的 AI 开发工作流",
+    "description": "VV Code desktop workspace for AI coding tools",
+    "websiteUrl": "https://vvcode.top/"
+  },
+  "distribution": {
+    "packageName": "vv-code",
+    "publisherName": "VV Code Contributors",
+    "bundleIdentifier": "com.vvcode.desktop",
+    "configDirName": ".vv-code",
+    "databaseFileName": "vv-code.db",
+    "logFileName": "vv-code.log",
+    "syncRoot": "vv-code-sync",
+    "themeStorageKey": "vv-code-theme",
+    "userAgent": "vv-code"
+  },
+  "service": {
+    "defaultBaseUrl": "https://vvcode.top"
+  },
+  "repository": {
+    "url": "https://github.com/PiuQiuPiaQia/api-switch",
+    "issuesUrl": "https://github.com/PiuQiuPiaQia/api-switch/issues",
+    "releasesUrl": "https://github.com/PiuQiuPiaQia/api-switch/releases",
+    "githubReleasesApiUrl": "https://api.github.com/repos/PiuQiuPiaQia/api-switch/releases?per_page=30"
+  },
+  "upstream": {
+    "name": "CC Switch",
+    "url": "https://github.com/farion1231/cc-switch"
+  },
+  "compatibility": {
+    "managedProviderId": "vv-code-managed"
+  }
+}

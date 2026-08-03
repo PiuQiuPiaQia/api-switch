@@ -1,4 +1,10 @@
 import type { NewApiBootstrap, NewApiInfoRoute, NewApiSession } from "./types";
+import { BRAND_CONFIG } from "./brand";
+
+const previewServerUrl = BRAND_CONFIG.service.defaultBaseUrl.replace(
+  /\/+$/,
+  "",
+);
 
 const model = (
   id: string,
@@ -17,7 +23,7 @@ const model = (
 });
 
 export const previewSession: NewApiSession = {
-  serverUrl: "https://vvcode.top",
+  serverUrl: previewServerUrl,
   userId: 1024,
   username: "preview",
   displayName: "体验用户",
@@ -30,21 +36,21 @@ export const previewApiInfoRoutes: NewApiInfoRoute[] = [
     id: "1",
     route: "默认线路",
     description: "默认",
-    url: "https://vvcode.top",
+    url: previewServerUrl,
     color: "green",
   },
   {
     id: "2",
     route: "CF全球加速",
     description: "CF全球加速",
-    url: "https://cf.vvcode.top",
+    url: "https://preview-cf.example.invalid",
     color: "orange",
   },
   {
     id: "3",
     route: "香港节点",
     description: "香港节点",
-    url: "https://hk.vvcode.top",
+    url: "https://preview-hk.example.invalid",
     color: "red",
   },
 ];
@@ -55,7 +61,7 @@ export const previewBootstrap: NewApiBootstrap = {
     id: 1024,
     username: "preview",
     displayName: "体验用户",
-    email: "preview@vvcode.top",
+    email: "preview@example.invalid",
     role: 1,
     status: 1,
     group: "pro",
@@ -69,7 +75,7 @@ export const previewBootstrap: NewApiBootstrap = {
       name: "日常开发",
       description: "均衡速度与成本，适合日常编码任务",
       ratio: "1.0",
-      baseUrl: "https://vvcode.top/v1",
+      baseUrl: `${previewServerUrl}/v1`,
       apiKey: "sk-preview-daily-not-a-real-key",
       defaultModelId: "claude-sonnet-4-6",
       apiProvider: "anthropic",
@@ -86,7 +92,7 @@ export const previewBootstrap: NewApiBootstrap = {
       name: "高性能",
       description: "优先质量与稳定性，适合复杂代理任务",
       ratio: "1.5",
-      baseUrl: "https://vvcode.top/v1",
+      baseUrl: `${previewServerUrl}/v1`,
       apiKey: "sk-preview-performance-not-a-real-key",
       defaultModelId: "claude-opus-4-6",
       apiProvider: "anthropic",
@@ -102,7 +108,7 @@ export const previewBootstrap: NewApiBootstrap = {
       name: "经济优先",
       description: "高性价比，适合高频轻量任务",
       ratio: "0.45",
-      baseUrl: "https://vvcode.top/v1",
+      baseUrl: `${previewServerUrl}/v1`,
       apiKey: "sk-preview-economy-not-a-real-key",
       defaultModelId: "deepseek-v4",
       apiProvider: "openai",

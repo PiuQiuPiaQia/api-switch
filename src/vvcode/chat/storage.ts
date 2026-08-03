@@ -1,7 +1,8 @@
 import type { UIMessage } from "ai";
 import type { NewApiBootstrap, NewApiGroup } from "../types";
+import { BRAND_CONFIG } from "../brand";
 
-const CHAT_STORAGE_PREFIX = "vv-code.chat.v1";
+const CHAT_STORAGE_PREFIX = `${BRAND_CONFIG.distribution.packageName}.chat.v1`;
 
 export interface ChatThreadRecord {
   id: string;
@@ -132,7 +133,10 @@ export function saveChatStore(userId: number, store: ChatStore): void {
   try {
     window.localStorage.setItem(chatStorageKey(userId), JSON.stringify(store));
   } catch (error) {
-    console.warn("[VV Code] Failed to persist chat history:", error);
+    console.warn(
+      `[${BRAND_CONFIG.brand.name}] Failed to persist chat history:`,
+      error,
+    );
   }
 }
 

@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import VvCodeApp from "./vvcode/VvCodeApp";
 import { DatabaseUpgrade } from "./vvcode/components/DatabaseUpgrade";
+import { BRAND_CONFIG, defaultConfigPath } from "./vvcode/brand";
+import { applyProductBranding } from "./vvcode/branding";
 import "./index.css";
 // 导入国际化配置
 import i18n from "./i18n";
@@ -19,6 +21,7 @@ import {
   reportFrontendError,
 } from "./lib/frontendLogger";
 
+applyProductBranding(i18n);
 installGlobalErrorHandlers();
 
 // 根据平台添加 body class，便于平台特定样式
@@ -48,7 +51,7 @@ interface ConfigLoadErrorPayload {
 async function handleConfigLoadError(
   payload: ConfigLoadErrorPayload | null,
 ): Promise<void> {
-  const path = payload?.path ?? "~/.vv-code/config.json";
+  const path = payload?.path ?? defaultConfigPath();
   const detail = payload?.error ?? "Unknown error";
 
   await message(
@@ -90,7 +93,10 @@ async function bootstrap() {
       ReactDOM.createRoot(document.getElementById("root")!).render(
         <React.StrictMode>
           <FrontendErrorBoundary>
-            <ThemeProvider defaultTheme="light" storageKey="vv-code-theme">
+            <ThemeProvider
+              defaultTheme="light"
+              storageKey={BRAND_CONFIG.distribution.themeStorageKey}
+            >
               <DatabaseUpgrade payload={initError} />
               <Toaster />
             </ThemeProvider>
@@ -113,7 +119,10 @@ async function bootstrap() {
     <React.StrictMode>
       <FrontendErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider defaultTheme="light" storageKey="vv-code-theme">
+          <ThemeProvider
+            defaultTheme="light"
+            storageKey={BRAND_CONFIG.distribution.themeStorageKey}
+          >
             <VvCodeApp />
             <Toaster />
           </ThemeProvider>

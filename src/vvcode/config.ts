@@ -1,22 +1,24 @@
 import type { ProductScenario } from "./types";
+import { BRAND_CONFIG } from "./brand";
 
 function envString(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\/+$/, "") : "";
 }
 
 export const PRODUCT = {
-  brand: {
-    name: "VV Code",
-    tagline: "一个账号，连接你的 AI 开发工作流",
-    websiteUrl: "https://vvcode.top/",
-  },
+  brand: BRAND_CONFIG.brand,
+  distribution: BRAND_CONFIG.distribution,
+  repository: BRAND_CONFIG.repository,
+  upstream: BRAND_CONFIG.upstream,
   billing: {
     currency: "USD",
     quotaPerUnit: 500_000,
     rechargePath: "/wallet",
   },
-  newApiBaseUrl: envString(import.meta.env.VITE_NEWAPI_BASE_URL),
-  managedProviderId: "vv-code-managed",
+  newApiBaseUrl:
+    envString(import.meta.env.VITE_NEWAPI_BASE_URL) ||
+    envString(BRAND_CONFIG.service.defaultBaseUrl),
+  managedProviderId: BRAND_CONFIG.compatibility.managedProviderId,
   scenarios: [
     {
       id: "claude",

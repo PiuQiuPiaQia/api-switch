@@ -34,12 +34,23 @@ VV Code 专属代码必须优先放在：
 6. VV Code 测试与实现同目录放置。修改共享扩展点时，同时跑上游相关测试，确保默认参数保持原行为。
 7. 纯品牌替换、Tauri/Cargo/package 元数据、应用图标、更新源和打包工作流是不可避免的 5% 发行层差异；修改时应与业务代码分开提交。
 
+## 品牌配置与派生发行
+
+- `src/vvcode/brand.config.json` 是品牌唯一事实源。展示名、标语、官网、站点服务、仓库地址、包名、Bundle Identifier、默认数据目录、日志名、同步根目录和 User-Agent 不得在业务代码中重复声明。
+- 前端 VV Code 代码通过 `src/vvcode/brand.ts` 或 `src/vvcode/config.ts` 读取品牌；Rust VV Code 代码通过 `src-tauri/src/vvcode/brand.rs` 读取。共享前端只能使用 `src/config/productRuntime.ts` 的中性构建值，共享 Rust 只能使用构建层注入的中性 `PRODUCT_*` 编译值，禁止反向导入 `vvcode`。
+- i18n 文案使用 `{{brandName}}`、`{{packageName}}`、`{{configDirName}}`、`{{databaseFileName}}`、`{{logFileName}}`、`{{syncRoot}}`、`{{upstreamName}}` 插值，不要把当前品牌名或默认路径重新写进 locale JSON。
+- 修改品牌配置后必须先运行 `pnpm brand:sync`，同步 `package.json`、Tauri 配置和 Cargo 包元数据；`pnpm brand:check` 与 `pnpm architecture:check` 会阻止派生文件漂移。
+- Logo 文件名固定为 `src/vvcode/assets/logo.png` 和 `src/vvcode/assets/app-icon.png`。换图后运行 `pnpm icons:generate`，不要把资源路径做成散落的业务配置。
+- `compatibility.managedProviderId`、`src/vvcode` 目录名、Rust/IPC 中已有的 `vvcode_*` 命令名属于持久化或代码兼容标识，不随展示品牌改名。确需修改时必须单独设计旧数据识别、迁移和回滚方案。
+- `distribution.configDirName`、`databaseFileName`、`packageName` 和 `bundleIdentifier` 会影响用户数据位置、LocalStorage 命名、可执行文件或系统安装身份。已发布产品修改这些字段前必须提供迁移策略，不能把它当成纯文案换牌。
+
 ## 禁止事项
 
 - 禁止在 `src/product/` 或含糊的 `product` 新目录继续新增二开代码；统一使用 `vvcode` 命名。
 - 禁止为了快速上线，在 `ProviderForm`、`ProviderService`、`commands/provider.rs` 等上游大文件内直接写 VV Code 分支。
 - 禁止把 NewAPI access token 或 OAuth 密钥暴露给 renderer；敏感会话仍由 Rust `vvcode` 模块持有，前端只接收脱敏摘要。
 - 禁止为规避边界检查而使用别名、重导出或字符串动态导入隐藏反向依赖。
+- 禁止绕过 `brand.config.json` 在组件、Rust 命令、语言包、更新器或发行清单中新增品牌名、官网、仓库地址及默认产品目录硬编码。
 
 ## 校验与上游同步
 
