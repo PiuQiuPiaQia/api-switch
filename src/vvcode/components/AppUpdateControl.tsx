@@ -5,6 +5,7 @@ import { Download, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   checkForVvCodeUpdate,
+  getCurrentVvCodeVersion,
   installVvCodeUpdate,
   type UpdateDownloadProgress,
   type VvCodeUpdateInfo,
@@ -24,9 +25,14 @@ function formatProgress(progress: UpdateDownloadProgress | null): string {
   return `下载 ${percentage}%`;
 }
 
+function formatVersion(version: string): string {
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
 export function AppUpdateControl({ className = "" }: { className?: string }) {
   const [phase, setPhase] = useState<UpdatePhase>("idle");
   const [update, setUpdate] = useState<VvCodeUpdateInfo | null>(null);
+  const [appVersion, setAppVersion] = useState("");
   const [progress, setProgress] = useState<UpdateDownloadProgress | null>(null);
   const checkingRef = useRef(false);
   const currentResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -42,6 +48,7 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
       const nextUpdate = await checkForVvCodeUpdate();
       setUpdate(nextUpdate);
       if (nextUpdate) {
+        setAppVersion(nextUpdate.currentVersion);
         setPhase("available");
         if (!manual) {
           toast.info(`发现 VV Code ${nextUpdate.availableVersion}`, {
@@ -72,6 +79,20 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
     } finally {
       checkingRef.current = false;
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentVvCodeVersion()
+      .then((version) => {
+        if (active) setAppVersion(version);
+      })
+      .catch(() => {
+        // The update action remains usable in browser-only previews.
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -151,6 +172,9 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
     label = "已是最新";
   }
 
+  const currentVersion = update?.currentVersion || appVersion;
+  const displayVersion = currentVersion ? formatVersion(currentVersion) : "";
+
   return (
     <button
       type="button"
@@ -161,12 +185,20 @@ export function AppUpdateControl({ className = "" }: { className?: string }) {
       }
       title={
         update
-          ? `当前 ${update.currentVersion}，可更新至 ${update.availableVersion}`
-          : "从 GitHub 检查 VV Code 更新"
+          ? `当前版本：${formatVersion(update.currentVersion)}，可用版本：${formatVersion(update.availableVersion)}`
+          : currentVersion
+            ? `当前版本：${formatVersion(currentVersion)}`
+            : "检查 VV Code 更新"
       }
     >
+      {displayVersion && (
+        <>
+          <span className="vv-update-button__version">{displayVersion}</span>
+          <span aria-hidden="true">·</span>
+        </>
+      )}
       {icon}
-      {label}
+      <span>{label}</span>
     </button>
   );
 }

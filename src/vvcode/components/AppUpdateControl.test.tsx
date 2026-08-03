@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppUpdateControl } from "./AppUpdateControl";
 
 const mocks = vi.hoisted(() => ({
+  getCurrentVersion: vi.fn(),
   check: vi.fn(),
   install: vi.fn(),
   confirm: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../updater", () => ({
+  getCurrentVvCodeVersion: mocks.getCurrentVersion,
   checkForVvCodeUpdate: mocks.check,
   installVvCodeUpdate: mocks.install,
 }));
@@ -36,6 +38,8 @@ vi.mock("sonner", () => ({
 describe("AppUpdateControl", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mocks.getCurrentVersion.mockReset();
+    mocks.getCurrentVersion.mockResolvedValue("0.0.1-beta.3");
     mocks.check.mockReset();
     mocks.install.mockReset();
     mocks.confirm.mockReset();
@@ -67,8 +71,12 @@ describe("AppUpdateControl", () => {
     });
 
     const updateButton = screen.getByRole("button", {
-      name: "更新到 0.0.1-beta.4",
+      name: "v0.0.1-beta.3 更新到 0.0.1-beta.4",
     });
+    expect(updateButton).toHaveAttribute(
+      "title",
+      "当前版本：v0.0.1-beta.3，可用版本：v0.0.1-beta.4",
+    );
     expect(mocks.info).toHaveBeenCalled();
 
     await act(async () => {
@@ -86,11 +94,40 @@ describe("AppUpdateControl", () => {
     render(<AppUpdateControl />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "v0.0.1-beta.3 检查更新",
+        }),
+      );
       await Promise.resolve();
     });
 
     expect(mocks.success).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "已是最新" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "v0.0.1-beta.3 已是最新",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the installed application version before checking for updates", async () => {
+    mocks.check.mockResolvedValue(null);
+    render(<AppUpdateControl />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const updateButton = screen.getByRole("button", {
+      name: "v0.0.1-beta.3 检查更新",
+    });
+    expect(updateButton).toHaveAttribute(
+      "title",
+      "当前版本：v0.0.1-beta.3",
+    );
   });
 });

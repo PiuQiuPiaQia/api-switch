@@ -687,6 +687,12 @@ body:has(.vv-app-loading) {
   background: #e2defd;
 }
 
+.vv-update-button__version {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+}
+
 .vv-update-button--standalone {
   min-height: 36px;
   padding: 0 13px;

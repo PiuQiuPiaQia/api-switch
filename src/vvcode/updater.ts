@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 
 export interface VvCodeUpdateInfo {
   currentVersion: string;
@@ -12,6 +13,10 @@ export interface VvCodeUpdateInfo {
 export interface UpdateDownloadProgress {
   downloaded: number;
   total?: number;
+}
+
+export async function getCurrentVvCodeVersion(): Promise<string> {
+  return getVersion();
 }
 
 export async function checkForVvCodeUpdate(): Promise<VvCodeUpdateInfo | null> {
