@@ -1,6 +1,6 @@
 # NewAPI 桌面端适配契约
 
-本文是 VV Code 桌面端与单一 NewAPI 中转站之间的实现契约。当前桌面端已实现 OAuth 2.0 + PKCE、会话持久化、用户信息、分组目录、分组专属 Key 初始化，以及 `vv-code-api` 旧接口兼容层。
+本文是 VV Code 桌面端与单一 NewAPI 中转站之间的实现契约。当前桌面端已实现 OAuth 2.0 + PKCE、会话持久化、分组目录和分组专属 Key 初始化。
 
 ## 1. 总体流程
 
@@ -30,7 +30,7 @@
    code=...&code_verifier=...&state=...&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Foauth%2Fnewapi
    ```
 
-5. 桌面端优先读取聚合接口 `GET /api/oauth/desktop/bootstrap`。若返回 404 或 501，则自动组合 `vv-code-api` 现有接口。
+5. 桌面端通过 `GET /api/user/self/groups` 读取当前用户的可用分组，不调用桌面端聚合接口。
 6. 用户选择 AI 场景和分组后，可按需从该分组的 `/models` 接口获取候选模型，再把连接信息与用户明确填写的模型配置写入本机。
 
 管理访问令牌与推理 Key 是两类凭据：OAuth `access_token` 只调用管理接口；每个分组的 `apiKey` 才写入 Claude Code、Codex、Gemini CLI 或 OpenCode。
@@ -63,9 +63,9 @@
 
 客户端将 access token 保存在应用配置目录的 `newapi-session.json` 中；Unix 平台权限会收紧为 `0600`。令牌不会返回给 React 页面。
 
-## 3. 推荐聚合接口
+## 3. 用户分组接口
 
-### `GET /api/oauth/desktop/bootstrap`
+### `GET /api/user/self/groups`
 
 请求头：
 
@@ -75,56 +75,25 @@ New-Api-User: <user-id>
 Accept: application/json
 ```
 
-成功响应：
+标准成功响应：
 
 ```json
 {
   "success": true,
   "data": {
-    "source": "desktop-v1",
-    "user": {
-      "id": 123,
-      "username": "alice",
-      "displayName": "Alice",
-      "email": "alice@example.com",
-      "role": 1,
-      "status": 1,
-      "group": "pro",
-      "quota": 12500000,
-      "usedQuota": 3720000,
-      "requestCount": 1842
+    "daily": {
+      "desc": "均衡速度与成本",
+      "ratio": 1
     },
-    "groups": [
-      {
-        "id": "daily",
-        "name": "日常开发",
-        "description": "均衡速度与成本",
-        "ratio": "1.0",
-        "baseUrl": "https://api.example.com/v1",
-        "apiKey": "sk-group-specific-key",
-        "apiProvider": "anthropic",
-        "ccProvider": "anthropic",
-        "isDefault": true
-      }
-    ]
+    "coding": {
+      "desc": "编程任务",
+      "ratio": 1.5
+    }
   }
 }
 ```
 
-字段要求：
-
-| 字段               | 必需     | 说明                                                          |
-| ------------------ | -------- | ------------------------------------------------------------- |
-| `groups[].id`      | 是       | 稳定、唯一的分组标识；不能使用可变的展示名作主键              |
-| `groups[].name`    | 是       | 用户可见名称                                                  |
-| `groups[].ratio`   | 是       | 字符串形式倍率，避免浮点展示误差；也可返回“自动”              |
-| `groups[].baseUrl` | 配置时是 | 写入 AI 工具的推理地址，必须是 HTTP(S) URL                    |
-| `groups[].apiKey`  | 配置时是 | 当前用户、当前分组的独立推理 Key                              |
-| `apiProvider`      | 建议     | 上游 API 协议，例如 `anthropic`、`openai`、`gemini`           |
-| `ccProvider`       | 建议     | 桌面工具写入提示；旧版字段可与 `apiProvider` 相同             |
-| `connections`      | 建议     | 按场景提供协议专用地址、Key 与 API 格式；客户端优先使用该字段 |
-
-聚合接口应在服务端一次完成用户权限过滤、分组倍率计算和 Key 关联，避免客户端拿到不一致快照。模型列表不需要放进 bootstrap；用户点击“获取全部模型列表”时，客户端才通过所选分组的推理 Key 按需读取 `/models`。可以添加 ETag 或版本号，但不得缓存不同用户的 Key。
+对象键作为稳定的分组标识，`desc` 和 `ratio` 用于界面展示。客户端也兼容数组形式以及可选的 `name`、`baseUrl`、`apiProvider`、`ccProvider`、`isDefault` 和 `connections` 字段。初次拉取分组时不读取或创建任何 Token；用户选中分组后才按需准备该分组的独立 Key。
 
 ## 4. 分组 Key 初始化
 
@@ -150,17 +119,9 @@ New-Api-User: <user-id>
 - 禁止在响应或审计日志之外长期展示完整 Key；桌面端只在写配置时使用并在 UI 脱敏。
 - 创建后通过标准 Key 查询接口读取完整 Key，并立即刷新本地 `bootstrap`。
 
-## 5. 现有 vv-code-api 兼容回退
+## 5. 请求边界
 
-当聚合接口为 404/501 时，桌面端并发调用：
-
-- `GET /api/user/self`
-- `GET /api/user/self/groups`
-- `GET /api/oauth/vscode/group_tokens`
-- `GET /api/token/?p=1&size=100`
-- `POST /api/token/batch/keys`
-
-客户端把 `group_tokens[].type` 与 `self/groups` 的对象键关联。`group_tokens` 继续提供旧版预设元数据；标准 Token 接口负责关联所有 `desktop-<group_id>` Key，非预设分组使用当前站点地址作为 `baseUrl`。模型仅在用户点击获取按钮时通过推理接口读取，不再在工作台启动时请求 `/pricing` 或逐分组请求 `/user/models`。生产环境仍建议实现聚合接口，以减少多接口快照不一致的可能。
+登录后或用户手动同步时，只调用 `GET /api/user/self/groups`。模型仅在进入聊天并选择分组时通过 `GET /api/user/models?group=<group_id>` 按需读取。Token 搜索、创建和完整 Key 读取也只在用户实际选择某个分组后发生。
 
 ## 6. 场景配置语义
 

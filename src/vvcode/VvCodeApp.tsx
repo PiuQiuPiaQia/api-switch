@@ -228,23 +228,29 @@ export default function VvCodeApp() {
     [toolEnvironments],
   );
 
-  const loadBootstrap = useCallback(async () => {
-    if (preview) {
+  const loadBootstrap = useCallback(
+    async (notify = false) => {
+      if (preview) {
+        setDataError(null);
+        setBootstrap(previewBootstrap);
+        return;
+      }
+      setDataLoading(true);
       setDataError(null);
-      setBootstrap(previewBootstrap);
-      return;
-    }
-    setDataLoading(true);
-    setDataError(null);
-    try {
-      const nextBootstrap = await newApiApi.getBootstrap();
-      setBootstrap(nextBootstrap);
-    } catch (error) {
-      setDataError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setDataLoading(false);
-    }
-  }, [preview]);
+      try {
+        const nextBootstrap = await newApiApi.getBootstrap();
+        setBootstrap(nextBootstrap);
+        if (notify) toast.success("配置同步完成");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setDataError(message);
+        if (notify) toast.error(`配置同步失败：${message}`);
+      } finally {
+        setDataLoading(false);
+      }
+    },
+    [preview],
+  );
 
   useEffect(() => {
     void newApiApi
@@ -475,16 +481,6 @@ export default function VvCodeApp() {
             <i />
           </div>
           <AppUpdateControl />
-          {!preview && (
-            <button
-              type="button"
-              disabled={dataLoading}
-              onClick={() => void loadBootstrap()}
-            >
-              <RefreshCw className={dataLoading ? "vv-spin" : ""} size={14} />
-              同步配置
-            </button>
-          )}
         </div>
 
         <div className="vv-main__scroll">
@@ -522,6 +518,9 @@ export default function VvCodeApp() {
               bootstrap={bootstrap}
               preview={preview}
               globalBaseUrl={globalBaseUrl}
+              syncing={dataLoading}
+              syncError={dataError}
+              onSync={() => void loadBootstrap(true)}
               onLogout={() => void handleLogout()}
             />
           ) : bootstrap && activeScenario ? (

@@ -3917,6 +3917,62 @@ body:has(.vv-app-loading) {
   font-size: 10px;
 }
 
+.vv-account-sync {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-top: 14px;
+  padding: 17px 19px;
+  border: 1px solid var(--vv-line);
+  border-radius: var(--vv-radius);
+  background: #fff;
+  box-shadow: var(--vv-shadow-sm);
+}
+
+.vv-account-sync__icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: #5d50d2;
+  background: #eeebff;
+}
+
+.vv-account-sync__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.vv-account-sync__content h2 {
+  margin: 0;
+  color: #37384d;
+  font-size: 13px;
+  font-weight: 690;
+}
+
+.vv-account-sync__content p {
+  max-width: 520px;
+  margin: 4px 0 0;
+  color: #898a9c;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.vv-account-sync__content small {
+  display: block;
+  margin-top: 5px;
+  color: #b24b58;
+  font-size: 10px;
+}
+
+.vv-account-sync__button {
+  min-width: 128px;
+  flex: none;
+}
+
 .vv-account-details {
   margin-top: 14px;
   padding: 19px;
@@ -4143,6 +4199,16 @@ body:has(.vv-app-loading) {
     padding: 14px 0 0;
     border-top: 1px solid #ebeaf3;
     border-left: 0;
+  }
+
+  .vv-account-sync {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .vv-account-sync__button {
+    width: calc(100% - 51px);
+    margin-left: 51px;
   }
 }
 

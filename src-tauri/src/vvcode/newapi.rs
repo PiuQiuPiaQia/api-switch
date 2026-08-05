@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 const LEGACY_AUTHORIZE_PATH: &str = "/api/oauth/vscode";
 const LEGACY_TOKEN_PATH: &str = "/api/oauth/vscode/token";
-const DESKTOP_BOOTSTRAP_PATH: &str = "/api/oauth/desktop/bootstrap";
+const USER_GROUPS_PATH: &str = "/api/user/self/groups";
 const STATUS_PATH: &str = "/api/status";
 const SESSION_FILE: &str = "newapi-session.json";
 const OAUTH_TTL_SECONDS: i64 = 10 * 60;
@@ -352,6 +352,99 @@ fn group_models_from_value(value: &Value) -> Result<Vec<String>, String> {
     Ok(models)
 }
 
+fn group_from_value(id: String, value: &Value, server_url: &str) -> NewApiGroup {
+    let object = value.as_object();
+    let ratio = object
+        .map(|item| value_string(item.get("ratio")))
+        .filter(|ratio| !ratio.trim().is_empty())
+        .unwrap_or_else(|| {
+            let direct = value_string(Some(value));
+            if direct.trim().is_empty() {
+                "1".to_string()
+            } else {
+                direct
+            }
+        });
+    let name = object
+        .map(|item| value_string(item.get("name")))
+        .unwrap_or_default()
+        .or_else_value(&id);
+    let base_url = object
+        .map(|item| value_string(item.get("baseUrl").or_else(|| item.get("base_url"))))
+        .unwrap_or_default()
+        .or_else_value(server_url);
+    let models = object
+        .and_then(|item| item.get("models"))
+        .cloned()
+        .and_then(|models| serde_json::from_value(models).ok())
+        .unwrap_or_default();
+    let connections = object
+        .and_then(|item| item.get("connections"))
+        .cloned()
+        .and_then(|connections| serde_json::from_value(connections).ok())
+        .unwrap_or_default();
+
+    NewApiGroup {
+        id,
+        name,
+        description: object
+            .map(|item| value_string(item.get("desc").or_else(|| item.get("description"))))
+            .unwrap_or_default(),
+        ratio,
+        base_url,
+        api_key: object
+            .map(|item| value_string(item.get("apiKey").or_else(|| item.get("api_key"))))
+            .unwrap_or_default(),
+        default_model_id: object
+            .map(|item| {
+                value_string(
+                    item.get("defaultModelId")
+                        .or_else(|| item.get("default_model_id")),
+                )
+            })
+            .unwrap_or_default(),
+        api_provider: object
+            .map(|item| value_string(item.get("apiProvider").or_else(|| item.get("api_provider"))))
+            .unwrap_or_default(),
+        cc_provider: object
+            .map(|item| value_string(item.get("ccProvider").or_else(|| item.get("cc_provider"))))
+            .unwrap_or_default(),
+        is_default: object
+            .and_then(|item| item.get("isDefault").or_else(|| item.get("is_default")))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        models,
+        connections,
+    }
+}
+
+fn groups_from_value(value: &Value, server_url: &str) -> Result<Vec<NewApiGroup>, String> {
+    let payload = data(value);
+    let mut groups = match payload {
+        Value::Object(items) => items
+            .iter()
+            .filter(|(id, _)| !id.trim().is_empty())
+            .map(|(id, item)| group_from_value(id.clone(), item, server_url))
+            .collect::<Vec<_>>(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(|item| {
+                let id = value_string(item.get("id").or_else(|| item.get("type")));
+                (!id.trim().is_empty()).then(|| group_from_value(id, item, server_url))
+            })
+            .collect::<Vec<_>>(),
+        _ => return Err("NewAPI 返回了无效的用户分组列表".to_string()),
+    };
+
+    groups.sort_by(|left, right| {
+        right
+            .is_default
+            .cmp(&left.is_default)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    Ok(groups)
+}
+
 fn value_string(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(value)) => value.clone(),
@@ -430,89 +523,6 @@ fn api_token_items(value: &Value) -> &[Value] {
         .unwrap_or_default()
 }
 
-fn preferred_group_token_ids(value: &Value) -> BTreeMap<String, i64> {
-    let mut candidates = BTreeMap::<String, (u8, i64)>::new();
-    for item in api_token_items(value) {
-        if value_i64(item.get("status")) != 1 {
-            continue;
-        }
-        let id = value_i64(item.get("id"));
-        let group_id = value_string(item.get("group"));
-        let name = value_string(item.get("name"));
-        if id <= 0 || group_id.is_empty() {
-            continue;
-        }
-
-        let priority = if name == format!("desktop-{group_id}") {
-            2
-        } else if name == group_id {
-            1
-        } else {
-            0
-        };
-        if priority == 0 {
-            continue;
-        }
-
-        let replace = candidates
-            .get(&group_id)
-            .is_none_or(|(current_priority, _)| priority > *current_priority);
-        if replace {
-            candidates.insert(group_id, (priority, id));
-        }
-    }
-
-    candidates
-        .into_iter()
-        .map(|(group_id, (_, id))| (group_id, id))
-        .collect()
-}
-
-fn merge_group_token_keys(
-    token_by_group: &mut BTreeMap<String, Value>,
-    token_ids: &BTreeMap<String, i64>,
-    keys_value: &Value,
-    server_url: &str,
-) {
-    let keys = data(keys_value).get("keys").and_then(Value::as_object);
-    let Some(keys) = keys else {
-        return;
-    };
-
-    for (group_id, token_id) in token_ids {
-        let Some(raw_key) = keys
-            .get(&token_id.to_string())
-            .and_then(Value::as_str)
-            .filter(|key| !key.trim().is_empty())
-        else {
-            continue;
-        };
-        let full_key = if raw_key.starts_with("sk-") {
-            raw_key.to_string()
-        } else {
-            format!("sk-{raw_key}")
-        };
-        let item = token_by_group.entry(group_id.clone()).or_insert_with(|| {
-            serde_json::json!({
-                "type": group_id,
-                "name": group_id,
-                "baseUrl": server_url,
-            })
-        });
-        if let Some(object) = item.as_object_mut() {
-            object.insert("apiKey".to_string(), Value::String(full_key));
-            let missing_base_url = object
-                .get("baseUrl")
-                .or_else(|| object.get("base_url"))
-                .and_then(Value::as_str)
-                .is_none_or(|base_url| base_url.trim().is_empty());
-            if missing_base_url {
-                object.insert("baseUrl".to_string(), Value::String(server_url.to_string()));
-            }
-        }
-    }
-}
-
 fn user_from_value(value: &Value, session: &StoredSession) -> NewApiUser {
     let response_user_id = value_i64(value.get("id"));
     let response_role = value_i64(value.get("role"));
@@ -561,168 +571,68 @@ impl OrElseValue for String {
     }
 }
 
-fn desktop_bootstrap_from_value(value: &Value) -> Option<NewApiBootstrap> {
-    let payload = data(value).clone();
-    serde_json::from_value::<NewApiBootstrap>(payload)
-        .ok()
-        .map(|mut bootstrap| {
-            if bootstrap.source.is_empty() {
-                bootstrap.source = "desktop-v1".to_string();
-            }
-            for group in &mut bootstrap.groups {
-                if group.name.is_empty() {
-                    group.name = group.id.clone();
-                }
-                for model in &mut group.models {
-                    if model.name.is_empty() {
-                        model.name = model.id.clone();
-                    }
-                }
-            }
-            bootstrap
-        })
-}
-
-async fn fetch_legacy_bootstrap(
+async fn fetch_bootstrap_with_client(
     client: &Client,
     session: &StoredSession,
 ) -> Result<NewApiBootstrap, String> {
-    let (self_result, groups_result, tokens_result, api_tokens_result) = tokio::join!(
-        authenticated_get(client, session, "/api/user/self"),
-        authenticated_get(client, session, "/api/user/self/groups"),
-        authenticated_get(client, session, "/api/oauth/vscode/group_tokens"),
-        authenticated_get(client, session, "/api/token/?p=1&size=100"),
-    );
-
-    let (self_status, self_value) = self_result?;
-    if !self_status.is_success() {
-        return Err(response_message(&self_value, "登录已失效，请重新登录"));
+    let (status, value) = authenticated_get(client, session, USER_GROUPS_PATH).await?;
+    if !status.is_success()
+        || value
+            .get("success")
+            .and_then(Value::as_bool)
+            .is_some_and(|success| !success)
+    {
+        return Err(response_message(&value, "无法获取用户可用分组"));
     }
-    let (groups_status, groups_value) = groups_result?;
-    if !groups_status.is_success() {
-        return Err(response_message(&groups_value, "无法获取用户可用分组"));
-    }
-    let (tokens_status, tokens_value) = tokens_result?;
-    if !tokens_status.is_success() {
-        return Err(response_message(&tokens_value, "无法获取分组密钥"));
-    }
-
-    let user = user_from_value(data(&self_value), session);
-    let usable_groups = data(&groups_value).as_object().cloned().unwrap_or_default();
-    let token_items = data(&tokens_value).as_array().cloned().unwrap_or_default();
-    let api_tokens_value = match api_tokens_result {
-        Ok((status, value)) if status.is_success() => value,
-        _ => Value::Null,
-    };
-
-    let mut token_by_group = BTreeMap::<String, Value>::new();
-    for item in token_items {
-        let id = value_string(item.get("type").or_else(|| item.get("id")));
-        if !id.is_empty() {
-            token_by_group.insert(id, item);
-        }
-    }
-
-    // The standard token APIs are the source of truth for desktop-created
-    // credentials. Keep group_tokens as a compatibility source for old keys.
-    let desktop_token_ids = preferred_group_token_ids(&api_tokens_value);
-    if !desktop_token_ids.is_empty() {
-        let ids = desktop_token_ids.values().copied().collect::<Vec<_>>();
-        let body = serde_json::json!({ "ids": ids });
-        if let Ok((status, keys_value)) =
-            authenticated_post_json(client, session, "/api/token/batch/keys", &body).await
-        {
-            let success = keys_value
-                .get("success")
-                .and_then(Value::as_bool)
-                .unwrap_or(status.is_success());
-            if status.is_success() && success {
-                merge_group_token_keys(
-                    &mut token_by_group,
-                    &desktop_token_ids,
-                    &keys_value,
-                    &session.server_url,
-                );
-            }
-        }
-    }
-
-    let mut all_group_ids = BTreeSet::new();
-    all_group_ids.extend(usable_groups.keys().cloned());
-    all_group_ids.extend(token_by_group.keys().cloned());
-
-    let mut groups = Vec::new();
-    for group_id in all_group_ids {
-        let usable = usable_groups.get(&group_id).and_then(Value::as_object);
-        let token = token_by_group.get(&group_id);
-        let name = value_string(token.and_then(|item| item.get("name"))).or_else_value(&group_id);
-        let ratio = value_string(usable.and_then(|item| item.get("ratio"))).or_else_value(
-            &value_string(token.and_then(|item| item.get("group_ratio"))).or_else_value("1"),
-        );
-        groups.push(NewApiGroup {
-            id: group_id,
-            name,
-            description: value_string(usable.and_then(|item| item.get("desc"))),
-            ratio,
-            base_url: value_string(
-                token.and_then(|item| item.get("baseUrl").or_else(|| item.get("base_url"))),
-            ),
-            api_key: value_string(
-                token.and_then(|item| item.get("apiKey").or_else(|| item.get("api_key"))),
-            ),
-            default_model_id: value_string(token.and_then(|item| {
-                item.get("defaultModelId")
-                    .or_else(|| item.get("default_model_id"))
-            })),
-            api_provider: value_string(
-                token.and_then(|item| item.get("apiProvider").or_else(|| item.get("api_provider"))),
-            ),
-            cc_provider: value_string(
-                token.and_then(|item| item.get("ccProvider").or_else(|| item.get("cc_provider"))),
-            ),
-            is_default: token
-                .and_then(|item| item.get("isDefault").or_else(|| item.get("is_default")))
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-            models: Vec::new(),
-            connections: BTreeMap::new(),
-        });
-    }
-
-    groups.sort_by(|left, right| {
-        right
-            .is_default
-            .cmp(&left.is_default)
-            .then_with(|| left.name.cmp(&right.name))
-    });
 
     Ok(NewApiBootstrap {
-        user,
-        groups,
-        source: "vscode-legacy".to_string(),
+        user: user_from_value(&Value::Null, session),
+        groups: groups_from_value(&value, &session.server_url)?,
+        source: "user-groups".to_string(),
     })
 }
 
 async fn fetch_bootstrap(session: &StoredSession) -> Result<NewApiBootstrap, String> {
-    let client = client()?;
-    let (status, value) = authenticated_get(&client, session, DESKTOP_BOOTSTRAP_PATH).await?;
-    if status.is_success() {
-        if value
+    fetch_bootstrap_with_client(&client()?, session).await
+}
+
+async fn fetch_bootstrap_with_group_key(
+    client: &Client,
+    session: &StoredSession,
+    group_id: &str,
+    token_id: i64,
+) -> Result<NewApiBootstrap, String> {
+    let mut bootstrap = fetch_bootstrap_with_client(client, session).await?;
+    let body = serde_json::json!({ "ids": [token_id] });
+    let (status, value) =
+        authenticated_post_json(client, session, "/api/token/batch/keys", &body).await?;
+    if !status.is_success()
+        || value
             .get("success")
             .and_then(Value::as_bool)
             .is_some_and(|success| !success)
-        {
-            return Err(response_message(&value, "无法加载工作台数据"));
-        }
-        return desktop_bootstrap_from_value(&value)
-            .ok_or_else(|| "NewAPI 桌面端聚合接口响应格式无效".to_string());
+    {
+        return Err(response_message(&value, "无法读取客户端密钥"));
     }
-
-    if !matches!(status, StatusCode::NOT_FOUND | StatusCode::NOT_IMPLEMENTED) {
-        return Err(response_message(&value, "无法加载工作台数据"));
-    }
-
-    fetch_legacy_bootstrap(&client, session).await
+    let raw_key = data(&value)
+        .get("keys")
+        .and_then(Value::as_object)
+        .and_then(|keys| keys.get(&token_id.to_string()))
+        .and_then(Value::as_str)
+        .filter(|key| !key.trim().is_empty())
+        .ok_or_else(|| "网站未返回当前分组的客户端密钥".to_string())?;
+    let api_key = if raw_key.starts_with("sk-") {
+        raw_key.to_string()
+    } else {
+        format!("sk-{raw_key}")
+    };
+    let group = bootstrap
+        .groups
+        .iter_mut()
+        .find(|group| group.id == group_id)
+        .ok_or_else(|| "当前账号已无法使用所选分组".to_string())?;
+    group.api_key = api_key;
+    Ok(bootstrap)
 }
 
 fn parse_loopback_oauth_target(target: &str) -> Option<NewApiOAuthCallback> {
@@ -1113,7 +1023,11 @@ pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootst
         let enabled = value_i64(existing.get("status")) == 1;
         let matching_group = value_string(existing.get("group")) == group_id;
         if enabled && matching_group {
-            return fetch_bootstrap(&session).await;
+            let token_id = value_i64(existing.get("id"));
+            if token_id <= 0 {
+                return Err("网站返回了无效的客户端密钥标识".to_string());
+            }
+            return fetch_bootstrap_with_group_key(&client, &session, group_id, token_id).await;
         }
         return Err("网站中已存在同名但不可用的客户端密钥，请先在密钥管理中处理".to_string());
     }
@@ -1138,7 +1052,22 @@ pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootst
     {
         return Err(response_message(&value, "无法创建客户端密钥"));
     }
-    fetch_bootstrap(&session).await
+
+    let (search_status, search_value) = authenticated_get(&client, &session, &search_path).await?;
+    if !search_status.is_success() {
+        return Err(response_message(&search_value, "无法读取新建的客户端密钥"));
+    }
+    let token_id = api_token_items(&search_value)
+        .iter()
+        .find(|item| {
+            value_string(item.get("name")) == token_name
+                && value_i64(item.get("status")) == 1
+                && value_string(item.get("group")) == group_id
+        })
+        .map(|item| value_i64(item.get("id")))
+        .filter(|id| *id > 0)
+        .ok_or_else(|| "网站未返回新建的客户端密钥".to_string())?;
+    fetch_bootstrap_with_group_key(&client, &session, group_id, token_id).await
 }
 
 #[cfg(test)]
@@ -1217,24 +1146,47 @@ mod tests {
     }
 
     #[test]
-    fn prefers_enabled_desktop_tokens_for_each_group() {
+    fn parses_standard_user_groups_response() {
         let value = serde_json::json!({
             "success": true,
             "data": {
-                "items": [
-                    { "id": 9, "name": "desktop-daily", "group": "daily", "status": 2 },
-                    { "id": 8, "name": "daily", "group": "daily", "status": 1 },
-                    { "id": 7, "name": "desktop-daily", "group": "daily", "status": 1 },
-                    { "id": 6, "name": "unrelated", "group": "daily", "status": 1 },
-                    { "id": 5, "name": "desktop-custom", "group": "custom", "status": 1 }
-                ]
+                "daily": { "desc": "日常开发", "ratio": 1 },
+                "pro": { "name": "专业组", "description": "高性能", "ratio": "2" }
             }
         });
 
-        let selected = preferred_group_token_ids(&value);
-        assert_eq!(selected.get("daily"), Some(&7));
-        assert_eq!(selected.get("custom"), Some(&5));
-        assert_eq!(selected.len(), 2);
+        let groups = groups_from_value(&value, "https://api.example.com").unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].id, "daily");
+        assert_eq!(groups[0].name, "daily");
+        assert_eq!(groups[0].description, "日常开发");
+        assert_eq!(groups[0].ratio, "1");
+        assert_eq!(groups[0].base_url, "https://api.example.com");
+        assert!(groups[0].api_key.is_empty());
+        assert_eq!(groups[1].name, "专业组");
+    }
+
+    #[test]
+    fn accepts_enriched_user_group_arrays() {
+        let value = serde_json::json!({
+            "data": [
+                {
+                    "id": "coding",
+                    "name": "编程组",
+                    "ratio": "1.5",
+                    "baseUrl": "https://coding.example.com",
+                    "apiProvider": "openai",
+                    "isDefault": true
+                }
+            ]
+        });
+
+        let groups = groups_from_value(&value, "https://api.example.com").unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, "coding");
+        assert_eq!(groups[0].base_url, "https://coding.example.com");
+        assert_eq!(groups[0].api_provider, "openai");
+        assert!(groups[0].is_default);
     }
 
     #[test]
@@ -1285,33 +1237,5 @@ mod tests {
             }
         });
         assert!(api_info_routes(&disabled).is_empty());
-    }
-
-    #[test]
-    fn merges_full_standard_token_keys_into_group_metadata() {
-        let mut groups = BTreeMap::from([(
-            "daily".to_string(),
-            serde_json::json!({ "type": "daily", "name": "日常组", "baseUrl": "" }),
-        )]);
-        let ids = BTreeMap::from([("daily".to_string(), 7), ("custom".to_string(), 5)]);
-        let keys = serde_json::json!({
-            "success": true,
-            "data": { "keys": { "7": "daily-key", "5": "sk-custom-key" } }
-        });
-
-        merge_group_token_keys(&mut groups, &ids, &keys, "https://api.example.com");
-
-        assert_eq!(
-            groups["daily"].get("apiKey").and_then(Value::as_str),
-            Some("sk-daily-key")
-        );
-        assert_eq!(
-            groups["daily"].get("baseUrl").and_then(Value::as_str),
-            Some("https://api.example.com")
-        );
-        assert_eq!(
-            groups["custom"].get("apiKey").and_then(Value::as_str),
-            Some("sk-custom-key")
-        );
     }
 }

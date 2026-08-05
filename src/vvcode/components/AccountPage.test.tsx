@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { previewBootstrap, previewSession } from "../mockData";
 import { AccountPage } from "./AccountPage";
@@ -21,6 +21,9 @@ describe("AccountPage", () => {
           },
         }}
         preview={false}
+        syncing={false}
+        syncError={null}
+        onSync={vi.fn()}
         onLogout={vi.fn()}
       />,
     );
@@ -44,6 +47,9 @@ describe("AccountPage", () => {
         session={previewSession}
         bootstrap={previewBootstrap}
         preview
+        syncing={false}
+        syncError={null}
+        onSync={vi.fn()}
         onLogout={vi.fn()}
       />,
     );
@@ -67,6 +73,9 @@ describe("AccountPage", () => {
         bootstrap={previewBootstrap}
         preview={false}
         globalBaseUrl="https://hk.vvcode.top"
+        syncing={false}
+        syncError={null}
+        onSync={vi.fn()}
         onLogout={vi.fn()}
       />,
     );
@@ -78,5 +87,81 @@ describe("AccountPage", () => {
       "href",
       "https://vvcode.top/wallet",
     );
+  });
+
+  it("syncs the latest station configuration from the account page", () => {
+    const onSync = vi.fn();
+    render(
+      <AccountPage
+        session={previewSession}
+        bootstrap={previewBootstrap}
+        preview={false}
+        syncing={false}
+        syncError={null}
+        onSync={onSync}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "配置同步" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /从中转站重新获取当前账号的可用分组/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "同步最新配置" }));
+    expect(onSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows synchronization progress and errors", () => {
+    const { rerender } = render(
+      <AccountPage
+        session={previewSession}
+        bootstrap={previewBootstrap}
+        preview={false}
+        syncing
+        syncError={null}
+        onSync={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "正在同步…" })).toBeDisabled();
+
+    rerender(
+      <AccountPage
+        session={previewSession}
+        bootstrap={previewBootstrap}
+        preview={false}
+        syncing={false}
+        syncError="网络连接失败"
+        onSync={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "上次同步失败：网络连接失败",
+    );
+  });
+
+  it("keeps the sync entry visible but disabled in preview mode", () => {
+    render(
+      <AccountPage
+        session={previewSession}
+        bootstrap={previewBootstrap}
+        preview
+        syncing={false}
+        syncError={null}
+        onSync={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "预览模式不可用" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/登录账号后可同步最新配置/)).toBeInTheDocument();
   });
 });

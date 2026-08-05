@@ -5,6 +5,7 @@ import {
   CalendarClock,
   LogOut,
   Mail,
+  RefreshCw,
   Server,
   ShieldCheck,
   UserRound,
@@ -20,6 +21,9 @@ interface AccountPageProps {
   bootstrap: NewApiBootstrap;
   preview: boolean;
   globalBaseUrl?: string;
+  syncing: boolean;
+  syncError: string | null;
+  onSync: () => void;
   onLogout: () => void;
 }
 
@@ -62,6 +66,9 @@ export function AccountPage({
   bootstrap,
   preview,
   globalBaseUrl = "",
+  syncing,
+  syncError,
+  onSync,
   onLogout,
 }: AccountPageProps) {
   const user = bootstrap.user;
@@ -162,6 +169,32 @@ export function AccountPage({
         </article>
       </section>
 
+      <section className="vv-account-sync" aria-labelledby="account-sync-title">
+        <div className="vv-account-sync__icon" aria-hidden="true">
+          <RefreshCw size={19} />
+        </div>
+        <div className="vv-account-sync__content">
+          <h2 id="account-sync-title">配置同步</h2>
+          <p>
+            {preview
+              ? "预览模式不会连接中转站，登录账号后可同步最新配置。"
+              : "从中转站重新获取当前账号的可用分组，不会改动已写入本地工具的配置。"}
+          </p>
+          {syncError && !preview ? (
+            <small role="alert">上次同步失败：{syncError}</small>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="vv-primary-button vv-account-sync__button"
+          disabled={preview || syncing}
+          onClick={onSync}
+        >
+          <RefreshCw className={syncing ? "vv-spin" : ""} size={16} />
+          {preview ? "预览模式不可用" : syncing ? "正在同步…" : "同步最新配置"}
+        </button>
+      </section>
+
       <section className="vv-account-details">
         <div className="vv-section-title">
           <div>
@@ -186,11 +219,7 @@ export function AccountPage({
           </div>
           <div>
             <dt>数据适配</dt>
-            <dd>
-              {bootstrap.source === "vscode-legacy"
-                ? "NewAPI 兼容接口"
-                : "桌面端聚合接口"}
-            </dd>
+            <dd>NewAPI 用户分组接口</dd>
           </div>
         </dl>
       </section>
