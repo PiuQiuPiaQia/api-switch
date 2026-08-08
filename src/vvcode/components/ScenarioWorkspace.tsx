@@ -58,7 +58,10 @@ interface ScenarioWorkspaceProps {
   environment: ToolEnvironmentState;
   onCheckForUpdates: () => Promise<ToolVersionInfo>;
   onRefreshEnvironment: () => Promise<ToolEnvironmentSnapshot>;
-  onEnsureTokens: (groupId: string) => Promise<NewApiBootstrap>;
+  onEnsureTokens: (
+    groupId: string,
+    createReplacementKey?: boolean,
+  ) => Promise<NewApiBootstrap>;
   initialSelectedGroupId?: string;
   onSelectedGroupChange?: (groupId: string) => void;
 }
@@ -209,6 +212,9 @@ export function ScenarioWorkspace({
     error: null,
   });
   const [keyRetryNonce, setKeyRetryNonce] = useState(0);
+  const [replacementKeyGroupId, setReplacementKeyGroupId] = useState<
+    string | null
+  >(null);
   const [providerLoading, setProviderLoading] = useState(!preview);
   const [existingManagedProvider, setExistingManagedProvider] =
     useState<Provider | null>(null);
@@ -427,7 +433,11 @@ export function ScenarioWorkspace({
       phase: "checking",
       error: null,
     });
-    void onEnsureTokens(provisionGroupId)
+    const ensureTokens =
+      replacementKeyGroupId === provisionGroupId
+        ? onEnsureTokens(provisionGroupId, true)
+        : onEnsureTokens(provisionGroupId);
+    void ensureTokens
       .then((nextBootstrap) => {
         if (keyProvisionRequestRef.current !== requestId) return;
         const nextGroup = nextBootstrap.groups.find(
@@ -459,6 +469,7 @@ export function ScenarioWorkspace({
     onEnsureTokens,
     preview,
     providerLoading,
+    replacementKeyGroupId,
     scenario,
     selectedConnection?.apiKey,
     selectedGroup?.id,
@@ -718,7 +729,10 @@ export function ScenarioWorkspace({
                   <button
                     type="button"
                     className="vv-credential-status__retry"
-                    onClick={() => setKeyRetryNonce((current) => current + 1)}
+                    onClick={() => {
+                      setReplacementKeyGroupId(selectedGroup.id);
+                      setKeyRetryNonce((current) => current + 1);
+                    }}
                   >
                     重试
                   </button>

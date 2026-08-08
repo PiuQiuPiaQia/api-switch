@@ -48,6 +48,20 @@ describe("newApiApi", () => {
     });
   });
 
+  it("requests a replacement key only after an explicit retry", async () => {
+    const bootstrap = { groups: [] };
+    invokeMock.mockResolvedValue(bootstrap);
+
+    await expect(
+      newApiApi.ensureGroupTokens("daily", "claude-code", true),
+    ).resolves.toBe(bootstrap);
+    expect(invokeMock).toHaveBeenCalledWith("newapi_ensure_group_tokens", {
+      groupId: "daily",
+      app: "claude-code",
+      createReplacementKey: true,
+    });
+  });
+
   it("loads the routes configured by the website API info feature", async () => {
     const routes = [{ id: "1", url: "https://vvcode.top" }];
     invokeMock.mockResolvedValue(routes);

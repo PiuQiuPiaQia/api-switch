@@ -524,6 +524,97 @@ fn api_token_items(value: &Value) -> &[Value] {
         .unwrap_or_default()
 }
 
+const MANAGED_TOKEN_PREFIX: &str = "desktop-";
+const MANAGED_TOKEN_NAME_MAX_LEN: usize = 50;
+const MANAGED_TOKEN_SUFFIX_LIMIT: usize = 100;
+
+fn managed_token_name(group_id: &str, suffix: Option<usize>) -> Result<String, String> {
+    let suffix = suffix.map(|value| format!("-{value}")).unwrap_or_default();
+    let max_group_bytes = MANAGED_TOKEN_NAME_MAX_LEN
+        .checked_sub(MANAGED_TOKEN_PREFIX.len() + suffix.len())
+        .ok_or_else(|| "分组标识过长，无法创建客户端密钥".to_string())?;
+
+    if suffix.is_empty() && group_id.len() > max_group_bytes {
+        return Err("分组标识过长，无法创建客户端密钥".to_string());
+    }
+
+    // 后缀候选需要为序号腾出空间；按 UTF-8 字符边界截断，避免切坏分组名。
+    let mut group_part = String::new();
+    for character in group_id.chars() {
+        if group_part.len() + character.len_utf8() > max_group_bytes {
+            break;
+        }
+        group_part.push(character);
+    }
+    if group_part.is_empty() {
+        return Err("分组标识过长，无法创建客户端密钥".to_string());
+    }
+
+    Ok(format!("{MANAGED_TOKEN_PREFIX}{group_part}{suffix}"))
+}
+
+fn token_matches_group(token: &Value, group_id: &str) -> bool {
+    value_i64(token.get("status")) == 1 && value_string(token.get("group")) == group_id
+}
+
+fn token_id(token: &Value) -> Result<i64, String> {
+    let id = value_i64(token.get("id"));
+    if id <= 0 {
+        return Err("网站返回了无效的客户端密钥标识".to_string());
+    }
+    Ok(id)
+}
+
+async fn find_named_token(
+    client: &Client,
+    session: &StoredSession,
+    token_name: &str,
+) -> Result<Option<Value>, String> {
+    let encoded_name =
+        url::form_urlencoded::byte_serialize(token_name.as_bytes()).collect::<String>();
+    let search_path = format!("/api/token/search?keyword={encoded_name}&p=1&size=100");
+    let (status, value) = authenticated_get(client, session, &search_path).await?;
+    if !status.is_success() {
+        return Err(response_message(&value, "无法检查现有客户端密钥"));
+    }
+
+    Ok(api_token_items(&value)
+        .iter()
+        .find(|item| value_string(item.get("name")) == token_name)
+        .cloned())
+}
+
+async fn create_group_token(
+    client: &Client,
+    session: &StoredSession,
+    group_id: &str,
+    token_name: &str,
+) -> Result<i64, String> {
+    let body = serde_json::json!({
+        "name": token_name,
+        "remain_quota": 0,
+        "expired_time": -1,
+        "unlimited_quota": true,
+        "model_limits_enabled": false,
+        "model_limits": "",
+        "allow_ips": "",
+        "group": group_id,
+        "cross_group_retry": false,
+    });
+    let (status, value) = authenticated_post_json(client, session, "/api/token/", &body).await?;
+    if !response_succeeded(status, &value) {
+        return Err(response_message(&value, "无法创建客户端密钥"));
+    }
+
+    let token = find_named_token(client, session, token_name)
+        .await?
+        .ok_or_else(|| "网站未返回新建的客户端密钥".to_string())?;
+    if !token_matches_group(&token, group_id) {
+        return Err("网站返回的新客户端密钥不可用".to_string());
+    }
+    token_id(&token)
+}
+
 fn user_from_value(value: &Value, session: &StoredSession) -> NewApiUser {
     let response_user_id = value_i64(value.get("id"));
     let response_role = value_i64(value.get("role"));
@@ -1038,85 +1129,53 @@ pub async fn newapi_get_group_models(group_id: String) -> Result<Vec<String>, St
 pub async fn newapi_ensure_group_tokens(
     group_id: String,
     app: Option<String>,
+    create_replacement_key: Option<bool>,
 ) -> Result<NewApiBootstrap, String> {
     let session = load_session()?.ok_or_else(|| "尚未登录 NewAPI".to_string())?;
     let group_id = group_id.trim();
     if group_id.is_empty() {
         return Err("未指定需要初始化密钥的分组".to_string());
     }
-    let token_name = format!("desktop-{group_id}");
-    if token_name.len() > 50 {
-        return Err("分组标识过长，无法创建客户端密钥".to_string());
-    }
 
     let client = client()?;
-    let encoded_name =
-        url::form_urlencoded::byte_serialize(token_name.as_bytes()).collect::<String>();
-    let search_path = format!("/api/token/search?keyword={encoded_name}&p=1&size=100");
-    let (search_status, search_value) = authenticated_get(&client, &session, &search_path).await?;
-    if !search_status.is_success() {
-        return Err(response_message(&search_value, "无法检查现有客户端密钥"));
-    }
-
-    let existing = api_token_items(&search_value)
-        .iter()
-        .find(|item| value_string(item.get("name")) == token_name);
-    if let Some(existing) = existing {
-        let enabled = value_i64(existing.get("status")) == 1;
-        let matching_group = value_string(existing.get("group")) == group_id;
-        if enabled && matching_group {
-            let token_id = value_i64(existing.get("id"));
-            if token_id <= 0 {
-                return Err("网站返回了无效的客户端密钥标识".to_string());
+    let replacement_attempts = if create_replacement_key.unwrap_or(false) {
+        MANAGED_TOKEN_SUFFIX_LIMIT - 1
+    } else {
+        0
+    };
+    for attempt in 0..=replacement_attempts {
+        let suffix = (attempt > 0).then_some(attempt + 1);
+        let token_name = managed_token_name(group_id, suffix)?;
+        match find_named_token(&client, &session, &token_name).await? {
+            Some(existing) if token_matches_group(&existing, group_id) => {
+                return fetch_bootstrap_with_group_key(
+                    &client,
+                    &session,
+                    app.as_deref(),
+                    group_id,
+                    token_id(&existing)?,
+                )
+                .await;
             }
-            return fetch_bootstrap_with_group_key(
-                &client,
-                &session,
-                app.as_deref(),
-                group_id,
-                token_id,
-            )
-            .await;
+            Some(_) if suffix.is_none() && !create_replacement_key.unwrap_or(false) => {
+                return Err("客户端密钥不可用，请点击重试".to_string());
+            }
+            Some(_) => continue,
+            None => {
+                let token_id = create_group_token(&client, &session, group_id, &token_name).await?;
+                return fetch_bootstrap_with_group_key(
+                    &client,
+                    &session,
+                    app.as_deref(),
+                    group_id,
+                    token_id,
+                )
+                .await;
+            }
         }
-        return Err("网站中已存在同名但不可用的客户端密钥，请先在密钥管理中处理".to_string());
     }
 
-    let body = serde_json::json!({
-        "name": token_name,
-        "remain_quota": 0,
-        "expired_time": -1,
-        "unlimited_quota": true,
-        "model_limits_enabled": false,
-        "model_limits": "",
-        "allow_ips": "",
-        "group": group_id,
-        "cross_group_retry": false,
-    });
-    let (status, value) = authenticated_post_json(&client, &session, "/api/token/", &body).await?;
-    if !status.is_success()
-        || value
-            .get("success")
-            .and_then(Value::as_bool)
-            .is_some_and(|success| !success)
-    {
-        return Err(response_message(&value, "无法创建客户端密钥"));
-    }
-
-    let (search_status, search_value) = authenticated_get(&client, &session, &search_path).await?;
-    if !search_status.is_success() {
-        return Err(response_message(&search_value, "无法读取新建的客户端密钥"));
-    }
-    let token_id = api_token_items(&search_value)
-        .iter()
-        .find(|item| {
-            value_string(item.get("name")) == token_name
-                && value_i64(item.get("status")) == 1
-                && value_string(item.get("group")) == group_id
-        })
-        .map(|item| value_i64(item.get("id")))
-        .filter(|id| *id > 0)
-        .ok_or_else(|| "网站未返回新建的客户端密钥".to_string())?;
-    fetch_bootstrap_with_group_key(&client, &session, app.as_deref(), group_id, token_id).await
+    Err("网站中已存在过多不可用的客户端密钥，请先在密钥管理中清理后重试".to_string())
 }
 
 #[cfg(test)]
@@ -1136,6 +1195,27 @@ mod tests {
     fn rejects_non_oauth_loopback_path() {
         assert!(parse_loopback_oauth_target("/favicon.ico").is_none());
         assert!(parse_loopback_oauth_target("https://example.com/oauth/newapi").is_none());
+    }
+
+    #[test]
+    fn managed_token_name_uses_a_suffix_for_a_replacement_key() {
+        assert_eq!(
+            managed_token_name("daily-codex-pro", Some(2)).unwrap(),
+            "desktop-daily-codex-pro-2"
+        );
+    }
+
+    #[test]
+    fn managed_token_name_truncates_only_suffixed_candidates() {
+        let group_id = "a".repeat(42);
+        assert_eq!(
+            managed_token_name(&group_id, None).unwrap(),
+            format!("desktop-{group_id}")
+        );
+
+        let replacement = managed_token_name(&group_id, Some(2)).unwrap();
+        assert_eq!(replacement.len(), MANAGED_TOKEN_NAME_MAX_LEN);
+        assert!(replacement.ends_with("-2"));
     }
 
     #[test]

@@ -167,6 +167,30 @@ describe("ScenarioWorkspace", () => {
     );
   });
 
+  it("creates a replacement key when retrying an unusable same-name key", async () => {
+    apiMocks.ensureTokens
+      .mockRejectedValueOnce(new Error("客户端密钥不可用，请点击重试"))
+      .mockResolvedValueOnce(bootstrapWithKey);
+
+    render(
+      <ScenarioWorkspace
+        scenario={PRODUCT.scenarios[0]}
+        bootstrap={bootstrapWithoutKey}
+        preview={false}
+        environment={readyEnvironment}
+        onCheckForUpdates={apiMocks.checkForUpdates}
+        onRefreshEnvironment={apiMocks.refreshEnvironment}
+        onEnsureTokens={apiMocks.ensureTokens}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await waitFor(() =>
+      expect(apiMocks.ensureTokens).toHaveBeenNthCalledWith(2, "daily", true),
+    );
+  });
+
   it("reuses a credential already present in bootstrap", async () => {
     render(<AutoProvisionHarness initialBootstrap={bootstrapWithLegacyKey} />);
 

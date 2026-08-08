@@ -35,10 +35,12 @@ export const newApiApi = {
   async ensureGroupTokens(
     groupId: string,
     app?: string,
+    createReplacementKey?: boolean,
   ): Promise<NewApiBootstrap> {
     return await invoke("newapi_ensure_group_tokens", {
       groupId,
       app: app ?? null,
+      ...(createReplacementKey ? { createReplacementKey: true } : {}),
     });
   },
 

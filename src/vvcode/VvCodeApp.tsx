@@ -362,16 +362,19 @@ export default function VvCodeApp() {
   );
 
   const ensureTokens = useCallback(
-    async (groupId: string): Promise<NewApiBootstrap> => {
+    async (
+      groupId: string,
+      createReplacementKey?: boolean,
+    ): Promise<NewApiBootstrap> => {
       if (preview) return previewBootstrap;
       const groupAppId = activeScenario?.groupAppId;
-      const requestKey = `${session?.serverUrl ?? ""}\u0000${session?.userId ?? ""}\u0000${groupAppId ?? ""}\u0000${groupId}`;
+      const requestKey = `${session?.serverUrl ?? ""}\u0000${session?.userId ?? ""}\u0000${groupAppId ?? ""}\u0000${groupId}\u0000${createReplacementKey ? "replacement" : "default"}`;
       const pending = tokenRequestsRef.current.get(requestKey);
       if (pending) return await pending;
       const bootstrapRequestId = bootstrapRequestRef.current;
 
       const request = newApiApi
-        .ensureGroupTokens(groupId, groupAppId)
+        .ensureGroupTokens(groupId, groupAppId, createReplacementKey)
         .then((next) => {
           if (bootstrapRequestId === bootstrapRequestRef.current) {
             setBootstrap(next);
