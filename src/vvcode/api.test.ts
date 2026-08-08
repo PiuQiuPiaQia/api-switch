@@ -13,13 +13,38 @@ describe("newApiApi", () => {
     invokeMock.mockReset();
   });
 
+  it("loads groups for the selected desktop application", async () => {
+    const bootstrap = { groups: [] };
+    invokeMock.mockResolvedValue(bootstrap);
+
+    await expect(newApiApi.getBootstrap("claude-code")).resolves.toBe(
+      bootstrap,
+    );
+    expect(invokeMock).toHaveBeenCalledWith("newapi_get_bootstrap", {
+      app: "claude-code",
+    });
+  });
+
+  it("requests the generic group fallback when no application is selected", async () => {
+    const bootstrap = { groups: [] };
+    invokeMock.mockResolvedValue(bootstrap);
+
+    await expect(newApiApi.getBootstrap()).resolves.toBe(bootstrap);
+    expect(invokeMock).toHaveBeenCalledWith("newapi_get_bootstrap", {
+      app: null,
+    });
+  });
+
   it("initializes only the selected group", async () => {
     const bootstrap = { groups: [] };
     invokeMock.mockResolvedValue(bootstrap);
 
-    await expect(newApiApi.ensureGroupTokens("daily")).resolves.toBe(bootstrap);
+    await expect(
+      newApiApi.ensureGroupTokens("daily", "claude-code"),
+    ).resolves.toBe(bootstrap);
     expect(invokeMock).toHaveBeenCalledWith("newapi_ensure_group_tokens", {
       groupId: "daily",
+      app: "claude-code",
     });
   });
 

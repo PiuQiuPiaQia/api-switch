@@ -23,6 +23,7 @@ export const PRODUCT = {
     {
       id: "claude",
       appId: "claude",
+      groupAppId: "claude-code",
       tool: "claude",
       name: "Claude Code",
       shortName: "Claude",
@@ -33,6 +34,7 @@ export const PRODUCT = {
     {
       id: "claude-desktop",
       appId: "claude-desktop",
+      groupAppId: "claude-desktop",
       tool: null,
       name: "Claude Desktop",
       shortName: "Claude 客户端",
@@ -43,6 +45,7 @@ export const PRODUCT = {
     {
       id: "codex",
       appId: "codex",
+      groupAppId: "codex",
       tool: "codex",
       name: "Codex（桌面端 / CLI）",
       shortName: "Codex",
@@ -57,6 +60,7 @@ export const PRODUCT = {
     {
       id: "gemini",
       appId: "gemini",
+      groupAppId: "gemini-cli",
       tool: "gemini",
       name: "Gemini CLI",
       shortName: "Gemini",
@@ -67,6 +71,7 @@ export const PRODUCT = {
     {
       id: "openclaw",
       appId: "openclaw",
+      groupAppId: "openclaw",
       tool: "openclaw",
       name: "OpenClaw（龙虾）",
       shortName: "龙虾",
@@ -77,6 +82,7 @@ export const PRODUCT = {
     {
       id: "hermes",
       appId: "hermes",
+      groupAppId: "hermes",
       tool: "hermes",
       name: "Hermes",
       shortName: "Hermes",

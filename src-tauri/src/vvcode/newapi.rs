@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 const LEGACY_AUTHORIZE_PATH: &str = "/api/oauth/vscode";
 const LEGACY_TOKEN_PATH: &str = "/api/oauth/vscode/token";
+const DESKTOP_GROUPS_PATH: &str = "/api/desktop/groups";
 const USER_GROUPS_PATH: &str = "/api/user/self/groups";
 const STATUS_PATH: &str = "/api/status";
 const SESSION_FILE: &str = "newapi-session.json";
@@ -574,35 +575,73 @@ impl OrElseValue for String {
 async fn fetch_bootstrap_with_client(
     client: &Client,
     session: &StoredSession,
+    app: Option<&str>,
 ) -> Result<NewApiBootstrap, String> {
-    let (status, value) = authenticated_get(client, session, USER_GROUPS_PATH).await?;
-    if !status.is_success()
-        || value
-            .get("success")
-            .and_then(Value::as_bool)
-            .is_some_and(|success| !success)
-    {
-        return Err(response_message(&value, "无法获取用户可用分组"));
-    }
+    let (value, source) = if let Some(app) = app.map(str::trim).filter(|app| !app.is_empty()) {
+        let path = desktop_groups_path(app);
+        let (status, value) = authenticated_get(client, session, &path).await?;
+        let success = response_succeeded(status, &value);
+        if success {
+            (value, "desktop-groups")
+        } else if should_fallback_to_user_groups(status) {
+            fetch_user_groups(client, session).await?
+        } else {
+            return Err(response_message(&value, "无法获取当前应用的可用分组"));
+        }
+    } else {
+        fetch_user_groups(client, session).await?
+    };
 
     Ok(NewApiBootstrap {
         user: user_from_value(&Value::Null, session),
         groups: groups_from_value(&value, &session.server_url)?,
-        source: "user-groups".to_string(),
+        source: source.to_string(),
     })
 }
 
-async fn fetch_bootstrap(session: &StoredSession) -> Result<NewApiBootstrap, String> {
-    fetch_bootstrap_with_client(&client()?, session).await
+fn response_succeeded(status: StatusCode, value: &Value) -> bool {
+    status.is_success()
+        && !value
+            .get("success")
+            .and_then(Value::as_bool)
+            .is_some_and(|success| !success)
+}
+
+fn should_fallback_to_user_groups(status: StatusCode) -> bool {
+    matches!(status, StatusCode::NOT_FOUND | StatusCode::NOT_IMPLEMENTED)
+}
+
+fn desktop_groups_path(app: &str) -> String {
+    let encoded_app = url::form_urlencoded::byte_serialize(app.as_bytes()).collect::<String>();
+    format!("{DESKTOP_GROUPS_PATH}?app={encoded_app}")
+}
+
+async fn fetch_user_groups(
+    client: &Client,
+    session: &StoredSession,
+) -> Result<(Value, &'static str), String> {
+    let (status, value) = authenticated_get(client, session, USER_GROUPS_PATH).await?;
+    if !response_succeeded(status, &value) {
+        return Err(response_message(&value, "无法获取用户可用分组"));
+    }
+    Ok((value, "user-groups"))
+}
+
+async fn fetch_bootstrap(
+    session: &StoredSession,
+    app: Option<&str>,
+) -> Result<NewApiBootstrap, String> {
+    fetch_bootstrap_with_client(&client()?, session, app).await
 }
 
 async fn fetch_bootstrap_with_group_key(
     client: &Client,
     session: &StoredSession,
+    app: Option<&str>,
     group_id: &str,
     token_id: i64,
 ) -> Result<NewApiBootstrap, String> {
-    let mut bootstrap = fetch_bootstrap_with_client(client, session).await?;
+    let mut bootstrap = fetch_bootstrap_with_client(client, session, app).await?;
     let body = serde_json::json!({ "ids": [token_id] });
     let (status, value) =
         authenticated_post_json(client, session, "/api/token/batch/keys", &body).await?;
@@ -960,9 +999,9 @@ pub fn newapi_logout() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn newapi_get_bootstrap() -> Result<NewApiBootstrap, String> {
+pub async fn newapi_get_bootstrap(app: Option<String>) -> Result<NewApiBootstrap, String> {
     let session = load_session()?.ok_or_else(|| "尚未登录 NewAPI".to_string())?;
-    fetch_bootstrap(&session).await
+    fetch_bootstrap(&session, app.as_deref()).await
 }
 
 #[tauri::command]
@@ -996,7 +1035,10 @@ pub async fn newapi_get_group_models(group_id: String) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootstrap, String> {
+pub async fn newapi_ensure_group_tokens(
+    group_id: String,
+    app: Option<String>,
+) -> Result<NewApiBootstrap, String> {
     let session = load_session()?.ok_or_else(|| "尚未登录 NewAPI".to_string())?;
     let group_id = group_id.trim();
     if group_id.is_empty() {
@@ -1027,7 +1069,14 @@ pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootst
             if token_id <= 0 {
                 return Err("网站返回了无效的客户端密钥标识".to_string());
             }
-            return fetch_bootstrap_with_group_key(&client, &session, group_id, token_id).await;
+            return fetch_bootstrap_with_group_key(
+                &client,
+                &session,
+                app.as_deref(),
+                group_id,
+                token_id,
+            )
+            .await;
         }
         return Err("网站中已存在同名但不可用的客户端密钥，请先在密钥管理中处理".to_string());
     }
@@ -1067,7 +1116,7 @@ pub async fn newapi_ensure_group_tokens(group_id: String) -> Result<NewApiBootst
         .map(|item| value_i64(item.get("id")))
         .filter(|id| *id > 0)
         .ok_or_else(|| "网站未返回新建的客户端密钥".to_string())?;
-    fetch_bootstrap_with_group_key(&client, &session, group_id, token_id).await
+    fetch_bootstrap_with_group_key(&client, &session, app.as_deref(), group_id, token_id).await
 }
 
 #[cfg(test)]
@@ -1143,6 +1192,29 @@ mod tests {
             normalize_server_url("http://127.0.0.1:3000/"),
             Ok("http://127.0.0.1:3000".to_string())
         );
+    }
+
+    #[test]
+    fn builds_encoded_desktop_group_paths() {
+        assert_eq!(
+            desktop_groups_path("claude-code"),
+            "/api/desktop/groups?app=claude-code"
+        );
+        assert_eq!(
+            desktop_groups_path("custom app"),
+            "/api/desktop/groups?app=custom+app"
+        );
+    }
+
+    #[test]
+    fn falls_back_only_when_the_desktop_groups_endpoint_is_unavailable() {
+        assert!(should_fallback_to_user_groups(StatusCode::NOT_FOUND));
+        assert!(should_fallback_to_user_groups(StatusCode::NOT_IMPLEMENTED));
+        assert!(!should_fallback_to_user_groups(StatusCode::UNAUTHORIZED));
+        assert!(!should_fallback_to_user_groups(StatusCode::FORBIDDEN));
+        assert!(!should_fallback_to_user_groups(
+            StatusCode::TOO_MANY_REQUESTS
+        ));
     }
 
     #[test]

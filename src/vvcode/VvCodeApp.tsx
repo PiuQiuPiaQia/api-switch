@@ -85,6 +85,7 @@ export default function VvCodeApp() {
   const [booting, setBooting] = useState(true);
   const [session, setSession] = useState<NewApiSession | null>(null);
   const [bootstrap, setBootstrap] = useState<NewApiBootstrap | null>(null);
+  const [bootstrapScope, setBootstrapScope] = useState("");
   const [preview, setPreview] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -96,7 +97,13 @@ export default function VvCodeApp() {
     createInitialToolEnvironments,
   );
   const initialToolCheckStartedRef = useRef(false);
+  const bootstrapRequestRef = useRef(0);
   const tokenRequestsRef = useRef(new Map<string, Promise<NewApiBootstrap>>());
+  const activeScenario = useMemo(
+    () => PRODUCT.scenarios.find((scenario) => scenario.id === activePage),
+    [activePage],
+  );
+  const activeGroupAppId = activeScenario?.groupAppId;
 
   const refreshToolEnvironment = useCallback(
     async (scenarioId: ScenarioId): Promise<ToolEnvironmentSnapshot> => {
@@ -229,24 +236,32 @@ export default function VvCodeApp() {
   );
 
   const loadBootstrap = useCallback(
-    async (notify = false) => {
+    async (app?: string, notify = false) => {
+      const scope = app?.trim() ?? "";
+      const requestId = ++bootstrapRequestRef.current;
       if (preview) {
         setDataError(null);
         setBootstrap(previewBootstrap);
+        setBootstrapScope(scope);
         return;
       }
       setDataLoading(true);
       setDataError(null);
       try {
-        const nextBootstrap = await newApiApi.getBootstrap();
+        const nextBootstrap = await newApiApi.getBootstrap(scope || undefined);
+        if (requestId !== bootstrapRequestRef.current) return;
         setBootstrap(nextBootstrap);
+        setBootstrapScope(scope);
         if (notify) toast.success("配置同步完成");
       } catch (error) {
+        if (requestId !== bootstrapRequestRef.current) return;
         const message = error instanceof Error ? error.message : String(error);
         setDataError(message);
         if (notify) toast.error(`配置同步失败：${message}`);
       } finally {
-        setDataLoading(false);
+        if (requestId === bootstrapRequestRef.current) {
+          setDataLoading(false);
+        }
       }
     },
     [preview],
@@ -283,8 +298,8 @@ export default function VvCodeApp() {
   }, []);
 
   useEffect(() => {
-    if (session) void loadBootstrap();
-  }, [loadBootstrap, session]);
+    if (session) void loadBootstrap(activeGroupAppId);
+  }, [activeGroupAppId, loadBootstrap, session]);
 
   useEffect(() => {
     if (!session || initialToolCheckStartedRef.current) return;
@@ -314,6 +329,7 @@ export default function VvCodeApp() {
     setGlobalBaseUrl("");
     setSession(previewSession);
     setBootstrap(previewBootstrap);
+    setBootstrapScope(activeGroupAppId ?? "");
   };
 
   const handleLogout = async () => {
@@ -327,9 +343,11 @@ export default function VvCodeApp() {
     }
     setSession(null);
     setBootstrap(null);
+    setBootstrapScope("");
     setPreview(false);
     setGlobalBaseUrl("");
     setActivePage("initialize");
+    bootstrapRequestRef.current += 1;
     tokenRequestsRef.current.clear();
   };
 
@@ -346,14 +364,21 @@ export default function VvCodeApp() {
   const ensureTokens = useCallback(
     async (groupId: string): Promise<NewApiBootstrap> => {
       if (preview) return previewBootstrap;
-      const requestKey = `${session?.serverUrl ?? ""}\u0000${session?.userId ?? ""}\u0000${groupId}`;
+      const groupAppId = activeScenario?.groupAppId;
+      const requestKey = `${session?.serverUrl ?? ""}\u0000${session?.userId ?? ""}\u0000${groupAppId ?? ""}\u0000${groupId}`;
       const pending = tokenRequestsRef.current.get(requestKey);
       if (pending) return await pending;
+      const bootstrapRequestId = bootstrapRequestRef.current;
 
-      const request = newApiApi.ensureGroupTokens(groupId).then((next) => {
-        setBootstrap(next);
-        return next;
-      });
+      const request = newApiApi
+        .ensureGroupTokens(groupId, groupAppId)
+        .then((next) => {
+          if (bootstrapRequestId === bootstrapRequestRef.current) {
+            setBootstrap(next);
+            setBootstrapScope(groupAppId ?? "");
+          }
+          return next;
+        });
       tokenRequestsRef.current.set(requestKey, request);
       try {
         return await request;
@@ -363,12 +388,7 @@ export default function VvCodeApp() {
         }
       }
     },
-    [preview, session?.serverUrl, session?.userId],
-  );
-
-  const activeScenario = useMemo(
-    () => PRODUCT.scenarios.find((scenario) => scenario.id === activePage),
-    [activePage],
+    [activeScenario?.groupAppId, preview, session?.serverUrl, session?.userId],
   );
   const sessionServerUrl = session?.serverUrl ?? "";
   const bootstrapUserId = bootstrap?.user.id ?? 0;
@@ -409,6 +429,9 @@ export default function VvCodeApp() {
     );
   }
 
+  const expectedBootstrapScope = activeGroupAppId ?? "";
+  const visibleBootstrap =
+    bootstrapScope === expectedBootstrapScope ? bootstrap : null;
   const sidebarIdentity = bootstrap?.user ?? session;
   const sidebarAccountName = resolveAccountName(sidebarIdentity);
 
@@ -484,16 +507,16 @@ export default function VvCodeApp() {
         </div>
 
         <div className="vv-main__scroll">
-          {dataLoading && !bootstrap ? (
+          {!visibleBootstrap && dataLoading ? (
             <AppLoading />
-          ) : dataError && !bootstrap ? (
+          ) : dataError && !visibleBootstrap ? (
             <div className="vv-data-error">
               <strong>暂时无法加载工作台数据</strong>
               <p>{dataError}</p>
               <div className="vv-data-error__actions">
                 <button
                   className="vv-primary-button"
-                  onClick={() => void loadBootstrap()}
+                  onClick={() => void loadBootstrap(activeGroupAppId)}
                 >
                   <RefreshCw size={16} /> 重新加载
                 </button>
@@ -505,29 +528,29 @@ export default function VvCodeApp() {
                 </button>
               </div>
             </div>
-          ) : bootstrap && activePage === "initialize" ? (
+          ) : visibleBootstrap && activePage === "initialize" ? (
             <InitializationPanel
               preview={preview}
               serverUrl={session.serverUrl}
               globalBaseUrl={globalBaseUrl}
               onGlobalBaseUrlChange={handleGlobalBaseUrlChange}
             />
-          ) : bootstrap && activePage === "account" ? (
+          ) : visibleBootstrap && activePage === "account" ? (
             <AccountPage
               session={session}
-              bootstrap={bootstrap}
+              bootstrap={visibleBootstrap}
               preview={preview}
               globalBaseUrl={globalBaseUrl}
               syncing={dataLoading}
               syncError={dataError}
-              onSync={() => void loadBootstrap(true)}
+              onSync={() => void loadBootstrap(undefined, true)}
               onLogout={() => void handleLogout()}
             />
-          ) : bootstrap && activeScenario ? (
+          ) : visibleBootstrap && activeScenario ? (
             <ScenarioWorkspace
               key={activeScenario.id}
               scenario={activeScenario}
-              bootstrap={bootstrap}
+              bootstrap={visibleBootstrap}
               preview={preview}
               globalBaseUrl={globalBaseUrl}
               environment={toolEnvironments[activeScenario.id]}
@@ -539,7 +562,9 @@ export default function VvCodeApp() {
               initialSelectedGroupId={selectedScenarioGroupId}
               onSelectedGroupChange={handleSelectedScenarioGroupChange}
             />
-          ) : null}
+          ) : (
+            <AppLoading />
+          )}
         </div>
       </main>
     </div>

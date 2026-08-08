@@ -20,8 +20,8 @@ export const newApiApi = {
     await invoke("newapi_logout");
   },
 
-  async getBootstrap(): Promise<NewApiBootstrap> {
-    return await invoke("newapi_get_bootstrap");
+  async getBootstrap(app?: string): Promise<NewApiBootstrap> {
+    return await invoke("newapi_get_bootstrap", { app: app ?? null });
   },
 
   async getApiInfoRoutes(): Promise<NewApiInfoRoute[]> {
@@ -32,8 +32,14 @@ export const newApiApi = {
     return await invoke("newapi_get_group_models", { groupId });
   },
 
-  async ensureGroupTokens(groupId: string): Promise<NewApiBootstrap> {
-    return await invoke("newapi_ensure_group_tokens", { groupId });
+  async ensureGroupTokens(
+    groupId: string,
+    app?: string,
+  ): Promise<NewApiBootstrap> {
+    return await invoke("newapi_ensure_group_tokens", {
+      groupId,
+      app: app ?? null,
+    });
   },
 
   async restoreOfficialConfiguration(app: AppId): Promise<void> {

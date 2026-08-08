@@ -52,6 +52,7 @@ const group: NewApiGroup = {
 const openCodeScenario: ProductScenario = {
   id: "opencode",
   appId: "opencode",
+  groupAppId: "opencode",
   tool: "opencode",
   name: "OpenCode",
   shortName: "OpenCode",

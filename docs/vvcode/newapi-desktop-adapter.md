@@ -30,7 +30,7 @@
    code=...&code_verifier=...&state=...&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Foauth%2Fnewapi
    ```
 
-5. 桌面端通过 `GET /api/user/self/groups` 读取当前用户的可用分组，不调用桌面端聚合接口。
+5. 进入具体 AI 工具时，桌面端优先通过 `GET /api/desktop/groups?app=<application-id>` 读取该应用的可用分组；接口尚未部署或应用未配置时，回退到 `GET /api/user/self/groups`。
 6. 用户选择 AI 场景和分组后，可按需从该分组的 `/models` 接口获取候选模型，再把连接信息与用户明确填写的模型配置写入本机。
 
 管理访问令牌与推理 Key 是两类凭据：OAuth `access_token` 只调用管理接口；每个分组的 `apiKey` 才写入 Claude Code、Codex、Gemini CLI 或 OpenCode。
@@ -63,9 +63,9 @@
 
 客户端将 access token 保存在应用配置目录的 `newapi-session.json` 中；Unix 平台权限会收紧为 `0600`。令牌不会返回给 React 页面。
 
-## 3. 用户分组接口
+## 3. 应用分组接口
 
-### `GET /api/user/self/groups`
+### `GET /api/desktop/groups?app=<application-id>`
 
 请求头：
 
@@ -74,6 +74,17 @@ Authorization: Bearer <management-access-token>
 New-Api-User: <user-id>
 Accept: application/json
 ```
+
+`app` 必须使用服务端配置的稳定应用标识。当前桌面端发送：
+
+| 场景           | `app`            |
+| -------------- | ---------------- |
+| Claude Code    | `claude-code`    |
+| Claude Desktop | `claude-desktop` |
+| Codex          | `codex`          |
+| Gemini CLI     | `gemini-cli`     |
+| OpenClaw       | `openclaw`       |
+| Hermes         | `hermes`         |
 
 标准成功响应：
 
@@ -93,7 +104,9 @@ Accept: application/json
 }
 ```
 
-对象键作为稳定的分组标识，`desc` 和 `ratio` 用于界面展示。客户端也兼容数组形式以及可选的 `name`、`baseUrl`、`apiProvider`、`ccProvider`、`isDefault` 和 `connections` 字段。初次拉取分组时不读取或创建任何 Token；用户选中分组后才按需准备该分组的独立 Key。
+对象键作为稳定的分组标识，`desc` 和 `ratio` 用于界面展示。服务端返回结果应当是“应用配置允许的分组”与“当前用户可用分组”的交集。客户端也兼容数组形式以及可选的 `name`、`baseUrl`、`apiProvider`、`ccProvider`、`isDefault` 和 `connections` 字段。初次拉取分组时不读取或创建任何 Token；用户选中分组后才按需准备该分组的独立 Key。
+
+当应用分组接口返回 `404` 或 `501` 时，客户端使用相同鉴权头请求通用接口 `GET /api/user/self/groups`。`401`、`403`、`429` 和其他服务端错误不会触发回退，避免绕过鉴权、权限和限流结果。应用已配置为空列表时应返回成功的空 `data`，客户端不会回退。
 
 ## 4. 分组 Key 初始化
 
@@ -121,7 +134,7 @@ New-Api-User: <user-id>
 
 ## 5. 请求边界
 
-登录后或用户手动同步时，只调用 `GET /api/user/self/groups`。模型仅在进入聊天并选择分组时通过 `GET /api/user/models?group=<group_id>` 按需读取。Token 搜索、创建和完整 Key 读取也只在用户实际选择某个分组后发生。
+登录后或用户手动同步时，通过 `GET /api/user/self/groups` 获取通用分组。进入 AI 工具时改用 `GET /api/desktop/groups?app=<application-id>`，并按上述规则回退。模型仅在进入聊天并选择分组时通过 `GET /api/user/models?group=<group_id>` 按需读取。Token 搜索、创建和完整 Key 读取也只在用户实际选择某个分组后发生；完成 Key 初始化后继续按当前应用重新拉取分组。
 
 ## 6. 场景配置语义
 

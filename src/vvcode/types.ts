@@ -12,6 +12,7 @@ export type ScenarioId =
 export interface ProductScenario {
   id: ScenarioId;
   appId: AppId;
+  groupAppId: string;
   tool:
     | "claude"
     | "codex"

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRODUCT } from "./config";
+import { previewBootstrap, previewSession } from "./mockData";
 import type { ToolVersionInfo } from "./types";
 import VvCodeApp from "./VvCodeApp";
 
@@ -165,5 +166,27 @@ describe("VvCodeApp tool environment checks", () => {
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["openclaw"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["hermes"]);
     expect(mocks.probeToolInstallations).not.toHaveBeenCalled();
+  });
+
+  it("reloads groups with the API application identifier for each scenario", async () => {
+    mocks.getSession.mockResolvedValue(previewSession);
+    mocks.getBootstrap.mockResolvedValue(previewBootstrap);
+
+    render(<VvCodeApp />);
+
+    expect(await screen.findByText("初始化页")).toBeInTheDocument();
+    expect(mocks.getBootstrap).toHaveBeenCalledWith(undefined);
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    await waitFor(() =>
+      expect(mocks.getBootstrap).toHaveBeenCalledWith("claude-code"),
+    );
+    expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Gemini CLI" }));
+    await waitFor(() =>
+      expect(mocks.getBootstrap).toHaveBeenCalledWith("gemini-cli"),
+    );
+    expect(await screen.findByText("Gemini CLI 工作区")).toBeInTheDocument();
   });
 });
