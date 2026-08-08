@@ -565,6 +565,15 @@ fn token_id(token: &Value) -> Result<i64, String> {
     Ok(id)
 }
 
+fn managed_token_rank(token_name: &str, base_name: &str) -> Option<usize> {
+    if token_name == base_name {
+        return Some(0);
+    }
+
+    let suffix = token_name.strip_prefix(&format!("{base_name}-"))?;
+    suffix.parse::<usize>().ok().filter(|suffix| *suffix >= 2)
+}
+
 async fn find_named_token(
     client: &Client,
     session: &StoredSession,
@@ -582,6 +591,31 @@ async fn find_named_token(
         .iter()
         .find(|item| value_string(item.get("name")) == token_name)
         .cloned())
+}
+
+async fn find_managed_group_token(
+    client: &Client,
+    session: &StoredSession,
+    group_id: &str,
+) -> Result<Option<Value>, String> {
+    let base_name = managed_token_name(group_id, None)?;
+    // NewAPI 的 keyword 搜索通常只返回精确名称，无法发现 `-2` 这类后缀密钥。
+    // 读取当前用户的首批密钥后再按名称、分组和状态在本地筛选。
+    let search_path = "/api/token/search?keyword=&p=1&size=100";
+    let (status, value) = authenticated_get(client, session, &search_path).await?;
+    if !status.is_success() {
+        return Err(response_message(&value, "无法检查现有客户端密钥"));
+    }
+
+    Ok(api_token_items(&value)
+        .iter()
+        .filter(|token| token_matches_group(token, group_id))
+        .filter_map(|token| {
+            managed_token_rank(&value_string(token.get("name")), &base_name)
+                .map(|rank| (rank, token))
+        })
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, token)| token.clone()))
 }
 
 async fn create_group_token(
@@ -1138,12 +1172,24 @@ pub async fn newapi_ensure_group_tokens(
     }
 
     let client = client()?;
+    if let Some(existing) = find_managed_group_token(&client, &session, group_id).await? {
+        return fetch_bootstrap_with_group_key(
+            &client,
+            &session,
+            app.as_deref(),
+            group_id,
+            token_id(&existing)?,
+        )
+        .await;
+    }
+
+    let first_attempt = usize::from(create_replacement_key.unwrap_or(false));
     let replacement_attempts = if create_replacement_key.unwrap_or(false) {
         MANAGED_TOKEN_SUFFIX_LIMIT - 1
     } else {
         0
     };
-    for attempt in 0..=replacement_attempts {
+    for attempt in first_attempt..=replacement_attempts {
         let suffix = (attempt > 0).then_some(attempt + 1);
         let token_name = managed_token_name(group_id, suffix)?;
         match find_named_token(&client, &session, &token_name).await? {
@@ -1157,7 +1203,7 @@ pub async fn newapi_ensure_group_tokens(
                 )
                 .await;
             }
-            Some(_) if suffix.is_none() && !create_replacement_key.unwrap_or(false) => {
+            Some(_) if suffix.is_none() => {
                 return Err("客户端密钥不可用，请点击重试".to_string());
             }
             Some(_) => continue,
@@ -1216,6 +1262,17 @@ mod tests {
         let replacement = managed_token_name(&group_id, Some(2)).unwrap();
         assert_eq!(replacement.len(), MANAGED_TOKEN_NAME_MAX_LEN);
         assert!(replacement.ends_with("-2"));
+    }
+
+    #[test]
+    fn managed_token_rank_recognizes_only_managed_suffixes() {
+        let base = "desktop-daily";
+
+        assert_eq!(managed_token_rank(base, base), Some(0));
+        assert_eq!(managed_token_rank("desktop-daily-2", base), Some(2));
+        assert_eq!(managed_token_rank("desktop-daily-1", base), None);
+        assert_eq!(managed_token_rank("desktop-daily-backup", base), None);
+        assert_eq!(managed_token_rank("desktop-daily-pro-2", base), None);
     }
 
     #[test]
