@@ -51,12 +51,15 @@ vi.mock("./components/ScenarioWorkspace", () => ({
   ScenarioWorkspace: ({
     scenario,
     onCheckForUpdates,
+    credentialRefreshing,
   }: {
     scenario: { name: string };
     onCheckForUpdates: () => Promise<unknown>;
+    credentialRefreshing: boolean;
   }) => (
     <div>
       {scenario.name} 工作区
+      {credentialRefreshing && <span>正在准备访问凭据…</span>}
       <button type="button" onClick={() => void onCheckForUpdates()}>
         仅检测更新
       </button>
@@ -86,6 +89,7 @@ function toolInfo(name: string): ToolVersionInfo {
 
 describe("VvCodeApp tool environment checks", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     mocks.getSession.mockReset();
     mocks.getSession.mockResolvedValue(null);
     mocks.getBootstrap.mockReset();
@@ -188,5 +192,26 @@ describe("VvCodeApp tool environment checks", () => {
       expect(mocks.getBootstrap).toHaveBeenCalledWith("gemini-cli"),
     );
     expect(await screen.findByText("Gemini CLI 工作区")).toBeInTheDocument();
+  });
+
+  it("restores a visited application from cache while refreshing in the background", async () => {
+    mocks.getSession.mockResolvedValue(previewSession);
+    mocks.getBootstrap.mockResolvedValue(previewBootstrap);
+
+    render(<VvCodeApp />);
+    expect(await screen.findByText("初始化页")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    expect(await screen.findByText("Claude Code 工作区")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Gemini CLI" }));
+    expect(await screen.findByText("Gemini CLI 工作区")).toBeInTheDocument();
+
+    mocks.getBootstrap.mockReturnValueOnce(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+
+    expect(screen.getByText("Claude Code 工作区")).toBeInTheDocument();
+    expect(screen.queryByText("正在准备工作台…")).not.toBeInTheDocument();
+    expect(screen.getByText("正在准备访问凭据…")).toBeInTheDocument();
   });
 });

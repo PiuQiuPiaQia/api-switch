@@ -105,11 +105,13 @@ function AutoProvisionHarness({
   ensuredBootstrap = bootstrapWithKey,
   initialSelectedGroupId,
   scenarioId = "claude",
+  credentialRefreshing = false,
 }: {
   initialBootstrap?: NewApiBootstrap;
   ensuredBootstrap?: NewApiBootstrap;
   initialSelectedGroupId?: string;
   scenarioId?: (typeof PRODUCT.scenarios)[number]["id"];
+  credentialRefreshing?: boolean;
 }) {
   const [bootstrap, setBootstrap] = useState(initialBootstrap);
   const ensureTokens = useCallback(
@@ -126,6 +128,7 @@ function AutoProvisionHarness({
       scenario={PRODUCT.scenarios.find((item) => item.id === scenarioId)!}
       bootstrap={bootstrap}
       preview={false}
+      credentialRefreshing={credentialRefreshing}
       environment={readyEnvironment}
       onCheckForUpdates={apiMocks.checkForUpdates}
       onRefreshEnvironment={apiMocks.refreshEnvironment}
@@ -200,6 +203,73 @@ describe("ScenarioWorkspace", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "应用配置" })).toBeEnabled(),
     );
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
+  });
+
+  it("keeps the provider editor mounted when only credentials refresh", async () => {
+    const { rerender } = render(
+      <ScenarioWorkspace
+        scenario={PRODUCT.scenarios[0]}
+        bootstrap={bootstrapWithLegacyKey}
+        preview={false}
+        environment={readyEnvironment}
+        onCheckForUpdates={apiMocks.checkForUpdates}
+        onRefreshEnvironment={apiMocks.refreshEnvironment}
+        onEnsureTokens={apiMocks.ensureTokens}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "应用配置" })).toBeEnabled(),
+    );
+    expect(apiMocks.getProviders).toHaveBeenCalledTimes(1);
+
+    const refreshedBootstrap: NewApiBootstrap = {
+      ...bootstrapWithLegacyKey,
+      groups: bootstrapWithLegacyKey.groups.map((group) => ({
+        ...group,
+        apiKey: "sk-refreshed-1234567890-key",
+      })),
+    };
+    rerender(
+      <ScenarioWorkspace
+        scenario={PRODUCT.scenarios[0]}
+        bootstrap={refreshedBootstrap}
+        preview={false}
+        credentialRefreshing
+        environment={readyEnvironment}
+        onCheckForUpdates={apiMocks.checkForUpdates}
+        onRefreshEnvironment={apiMocks.refreshEnvironment}
+        onEnsureTokens={apiMocks.ensureTokens}
+      />,
+    );
+
+    expect(screen.queryByText("正在读取已有配置…")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "应用配置" })).toBeDisabled();
+    expect(apiMocks.getProviders).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps cached credentials checking until the application refresh finishes", async () => {
+    const { rerender } = render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        credentialRefreshing
+      />,
+    );
+
+    expect(screen.getByText("正在准备访问凭据…")).toBeInTheDocument();
+    expect(screen.queryByText("访问凭据已就绪")).not.toBeInTheDocument();
+    expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
+
+    rerender(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        credentialRefreshing={false}
+      />,
+    );
+
+    expect(await screen.findByText("访问凭据已就绪")).toBeInTheDocument();
+    expect(screen.queryByText("正在准备访问凭据…")).not.toBeInTheDocument();
     expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
   });
 

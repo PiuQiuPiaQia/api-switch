@@ -13,6 +13,11 @@ import {
   loadSelectedScenarioGroup,
   saveSelectedScenarioGroup,
 } from "./scenarioPreferences";
+import {
+  clearCachedBootstraps,
+  loadCachedBootstrap,
+  saveCachedBootstrap,
+} from "./bootstrapCache";
 import { previewBootstrap, previewSession } from "./mockData";
 import { resolveAccountName } from "./userIdentity";
 import type {
@@ -245,6 +250,13 @@ export default function VvCodeApp() {
         setBootstrapScope(scope);
         return;
       }
+      const cached = session
+        ? loadCachedBootstrap(session.userId, scope)
+        : null;
+      if (cached) {
+        setBootstrap(cached);
+        setBootstrapScope(scope);
+      }
       setDataLoading(true);
       setDataError(null);
       try {
@@ -252,6 +264,9 @@ export default function VvCodeApp() {
         if (requestId !== bootstrapRequestRef.current) return;
         setBootstrap(nextBootstrap);
         setBootstrapScope(scope);
+        if (session) {
+          saveCachedBootstrap(session.userId, scope, nextBootstrap);
+        }
         if (notify) toast.success("配置同步完成");
       } catch (error) {
         if (requestId !== bootstrapRequestRef.current) return;
@@ -264,7 +279,7 @@ export default function VvCodeApp() {
         }
       }
     },
-    [preview],
+    [preview, session],
   );
 
   useEffect(() => {
@@ -289,6 +304,13 @@ export default function VvCodeApp() {
         setGlobalBaseUrl(
           current ? loadSelectedGlobalBaseUrl(current.serverUrl) : "",
         );
+        if (current) {
+          const cached = loadCachedBootstrap(current.userId);
+          if (cached) {
+            setBootstrap(cached);
+            setBootstrapScope("");
+          }
+        }
         setSession(current);
       })
       .catch((error) =>
@@ -315,6 +337,11 @@ export default function VvCodeApp() {
     try {
       const nextSession = await newApiApi.beginOAuth(PRODUCT.newApiBaseUrl);
       setGlobalBaseUrl(loadSelectedGlobalBaseUrl(nextSession.serverUrl));
+      const cached = loadCachedBootstrap(nextSession.userId);
+      if (cached) {
+        setBootstrap(cached);
+        setBootstrapScope("");
+      }
       setSession(nextSession);
       toast.success("登录成功，正在同步可用分组");
     } catch (error) {
@@ -333,6 +360,7 @@ export default function VvCodeApp() {
   };
 
   const handleLogout = async () => {
+    const userId = session?.userId;
     if (!preview) {
       try {
         await newApiApi.logout();
@@ -340,6 +368,7 @@ export default function VvCodeApp() {
         toast.error(error instanceof Error ? error.message : String(error));
         return;
       }
+      if (userId !== undefined) clearCachedBootstraps(userId);
     }
     setSession(null);
     setBootstrap(null);
@@ -376,6 +405,9 @@ export default function VvCodeApp() {
       const request = newApiApi
         .ensureGroupTokens(groupId, groupAppId, createReplacementKey)
         .then((next) => {
+          if (session) {
+            saveCachedBootstrap(session.userId, groupAppId, next);
+          }
           if (bootstrapRequestId === bootstrapRequestRef.current) {
             setBootstrap(next);
             setBootstrapScope(groupAppId ?? "");
@@ -392,6 +424,28 @@ export default function VvCodeApp() {
       }
     },
     [activeScenario?.groupAppId, preview, session?.serverUrl, session?.userId],
+  );
+  const handlePageChange = useCallback(
+    (page: ActivePage) => {
+      if (page === activePage) return;
+      const scope =
+        PRODUCT.scenarios.find((scenario) => scenario.id === page)
+          ?.groupAppId ?? "";
+      if (preview) {
+        setBootstrap(previewBootstrap);
+        setBootstrapScope(scope);
+      } else if (session) {
+        const cached = loadCachedBootstrap(session.userId, scope);
+        if (cached) {
+          setBootstrap(cached);
+          setBootstrapScope(scope);
+          setDataError(null);
+        }
+      }
+      if (!preview && session && scope) setDataLoading(true);
+      setActivePage(page);
+    },
+    [activePage, preview, session],
   );
   const sessionServerUrl = session?.serverUrl ?? "";
   const bootstrapUserId = bootstrap?.user.id ?? 0;
@@ -448,7 +502,7 @@ export default function VvCodeApp() {
           <button
             type="button"
             className={activePage === "initialize" ? "is-active" : ""}
-            onClick={() => setActivePage("initialize")}
+            onClick={() => handlePageChange("initialize")}
           >
             <i style={{ "--nav-accent": "#6658ee" } as React.CSSProperties}>
               <Gauge size={18} strokeWidth={1.9} />
@@ -461,7 +515,7 @@ export default function VvCodeApp() {
               type="button"
               key={scenario.id}
               className={activePage === scenario.id ? "is-active" : ""}
-              onClick={() => setActivePage(scenario.id)}
+              onClick={() => handlePageChange(scenario.id)}
             >
               <i
                 aria-hidden="true"
@@ -485,7 +539,7 @@ export default function VvCodeApp() {
           <button
             type="button"
             className={activePage === "account" ? "is-active" : ""}
-            onClick={() => setActivePage("account")}
+            onClick={() => handlePageChange("account")}
           >
             <span className="vv-sidebar__avatar">
               {sidebarAccountName.slice(0, 1).toUpperCase()}
@@ -555,6 +609,7 @@ export default function VvCodeApp() {
               scenario={activeScenario}
               bootstrap={visibleBootstrap}
               preview={preview}
+              credentialRefreshing={dataLoading}
               globalBaseUrl={globalBaseUrl}
               environment={toolEnvironments[activeScenario.id]}
               onCheckForUpdates={() => checkToolUpdate(activeScenario.id)}

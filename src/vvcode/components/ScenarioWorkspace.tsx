@@ -54,6 +54,7 @@ interface ScenarioWorkspaceProps {
   scenario: ProductScenario;
   bootstrap: NewApiBootstrap;
   preview: boolean;
+  credentialRefreshing?: boolean;
   globalBaseUrl?: string;
   environment: ToolEnvironmentState;
   onCheckForUpdates: () => Promise<ToolVersionInfo>;
@@ -183,6 +184,7 @@ export function ScenarioWorkspace({
   scenario,
   bootstrap,
   preview,
+  credentialRefreshing = false,
   globalBaseUrl = "",
   environment,
   onCheckForUpdates,
@@ -231,6 +233,20 @@ export function ScenarioWorkspace({
   const updateAvailable = hasToolEnvironment
     ? isUpdateAvailable(toolInfo?.version, toolInfo?.latest_version)
     : false;
+  // Credential refreshes replace the bootstrap object, but do not change the
+  // group catalogue. Keep the provider editor mounted during those refreshes.
+  const groupCatalogSignature = useMemo(
+    () =>
+      JSON.stringify(
+        bootstrap.groups.map((group) => ({
+          id: group.id,
+          name: group.name,
+          description: group.description,
+          ratio: group.ratio,
+        })),
+      ),
+    [bootstrap.groups],
+  );
 
   const checkForUpdates = useCallback(async () => {
     try {
@@ -345,7 +361,7 @@ export function ScenarioWorkspace({
       cancelled = true;
     };
   }, [
-    bootstrap.groups,
+    groupCatalogSignature,
     environmentReady,
     onSelectedGroupChange,
     preview,
@@ -371,8 +387,9 @@ export function ScenarioWorkspace({
   const keyProvisioning = Boolean(
     selectedGroup &&
       !preview &&
-      !hasPreparedCredential &&
-      (!keyPreparationIsCurrent || keyPreparation.phase === "checking"),
+      (credentialRefreshing ||
+        (!hasPreparedCredential &&
+          (!keyPreparationIsCurrent || keyPreparation.phase === "checking"))),
   );
   const keyProvisionError =
     !hasPreparedCredential &&
@@ -380,7 +397,7 @@ export function ScenarioWorkspace({
     keyPreparation.phase === "error"
       ? keyPreparation.error
       : null;
-  const keyReady = hasPreparedCredential;
+  const keyReady = hasPreparedCredential && !credentialRefreshing;
   const managedProvider = useMemo(
     () =>
       selectedGroup
@@ -410,7 +427,12 @@ export function ScenarioWorkspace({
     keyProvisionRequestRef.current = requestId;
     const provisionGroupId = selectedGroup?.id ?? "";
 
-    if (!environmentReady || providerLoading || !provisionGroupId) {
+    if (
+      !environmentReady ||
+      providerLoading ||
+      credentialRefreshing ||
+      !provisionGroupId
+    ) {
       setKeyPreparation({
         groupId: provisionGroupId,
         phase: "checking",
@@ -465,6 +487,7 @@ export function ScenarioWorkspace({
       });
   }, [
     keyRetryNonce,
+    credentialRefreshing,
     environmentReady,
     onEnsureTokens,
     preview,
