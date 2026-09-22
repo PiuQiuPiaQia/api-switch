@@ -113,10 +113,13 @@ describe("ManagedProviderCoreForm", () => {
         group.apiKey,
       ),
     );
-    const modelMenus = screen
-      .getAllByRole("button")
-      .filter((button) => button.getAttribute("aria-haspopup") === "menu");
-    expect(modelMenus).toHaveLength(3);
+    // 上游把模型下拉重构为可搜索 Popover（aria-label「Select model」，
+    // 测试环境 i18n 资源为空，取 defaultValue），Claude 场景下三个角色输入各对应一个。
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Select model" }),
+      ).toHaveLength(3),
+    );
   });
 
   it("keeps the Codex default model empty unless the user changes it", async () => {

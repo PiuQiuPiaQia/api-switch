@@ -8,6 +8,9 @@ pub mod mcp;
 pub mod model_fetch;
 pub mod model_pricing;
 pub mod omo;
+pub mod pi_prompt_files;
+#[allow(dead_code)] // VV Code 组合根未接线该上游模块（发行版不含 Pi 应用），保留实现以便后续同步
+pub(crate) mod pi_state;
 pub mod profile;
 pub mod prompt;
 pub mod provider;
@@ -20,6 +23,7 @@ pub mod session_usage_codex;
 pub mod session_usage_gemini;
 pub mod session_usage_grokbuild;
 pub mod session_usage_opencode;
+pub mod session_usage_pi;
 pub mod skill;
 pub mod speedtest;
 pub mod sql_helpers;
@@ -48,3 +52,5 @@ pub use usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
     RequestLogDetail, UsageSummary, UsageSummaryByApp,
 };
+
+pub mod session_usage_mcode;

@@ -20,6 +20,9 @@ export default defineConfig({
     },
   },
   test: {
+    include: ["{src,tests}/**/*.{test,spec}.{ts,tsx,js,jsx}"],
+    // exFAT 等文件系统会生成 AppleDouble(._*)元数据文件，避免被当作测试收集
+    exclude: ["**/node_modules/**", "**/dist/**", "**/._*"],
     environment: "jsdom",
     setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
     globals: true,

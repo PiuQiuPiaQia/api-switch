@@ -17,6 +17,8 @@ mod misc;
 mod model_fetch;
 mod omo;
 mod openclaw;
+#[allow(dead_code)] // VV Code 组合根未接线该上游模块（发行版不含 Pi 应用），保留实现以便后续同步
+mod pi;
 mod plugin;
 mod profile;
 mod prompt;
@@ -53,6 +55,8 @@ pub use misc::*;
 pub use model_fetch::*;
 pub use omo::*;
 pub use openclaw::*;
+#[allow(unused_imports)] // VV Code 组合根未注册 Pi 命令，保留上游重导出以便后续同步
+pub(crate) use pi::*;
 pub use plugin::*;
 pub use profile::*;
 pub use prompt::*;

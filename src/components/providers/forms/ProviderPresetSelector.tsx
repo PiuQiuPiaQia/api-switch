@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FormLabel } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaudeIcon, CodexIcon, GeminiIcon } from "@/components/BrandIcons";
@@ -20,6 +20,8 @@ import type { ClaudeDesktopProviderPreset } from "@/config/claudeDesktopProvider
 import type { OpenCodeProviderPreset } from "@/config/opencodeProviderPresets";
 import type { OpenClawProviderPreset } from "@/config/openclawProviderPresets";
 import type { HermesProviderPreset } from "@/config/hermesProviderPresets";
+import type { McodeProviderPreset } from "@/config/mcodeProviderPresets";
+import type { PiProviderPreset } from "@/config/piProviderPresets";
 import type { ProviderCategory } from "@/types";
 import {
   universalProviderPresets,
@@ -44,7 +46,9 @@ export type AnyPreset =
   | ClaudeDesktopProviderPreset
   | OpenCodeProviderPreset
   | OpenClawProviderPreset
-  | HermesProviderPreset;
+  | HermesProviderPreset
+  | PiProviderPreset
+  | McodeProviderPreset;
 
 export type PresetEntry = {
   id: string;
@@ -147,6 +151,7 @@ interface ProviderPresetSelectorProps {
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
   category?: ProviderCategory; // 当前选中的分类
+  categoryHint?: ReactNode;
 }
 
 export function ProviderPresetSelector({
@@ -157,6 +162,7 @@ export function ProviderPresetSelector({
   onUniversalPresetSelect,
   onManageUniversalProviders,
   category,
+  categoryHint,
 }: Readonly<ProviderPresetSelectorProps>) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -215,6 +221,7 @@ export function ProviderPresetSelector({
   );
 
   const getCategoryHint = (): ReactNode => {
+    if (categoryHint !== undefined) return categoryHint;
     switch (category) {
       case "official":
         return t("providerForm.officialHint", {
@@ -256,7 +263,7 @@ export function ProviderPresetSelector({
     );
   };
 
-  const renderPresetIcon = (preset: AnyPreset) => {
+  const renderPresetIcon = (preset: AnyPreset, isSelected: boolean) => {
     if (preset.icon) {
       return (
         <ProviderIcon
@@ -264,7 +271,11 @@ export function ProviderPresetSelector({
           name={preset.name}
           color={preset.iconColor}
           size={16}
-          className="flex-shrink-0"
+          // currentColor 单色图标：未选中时取前景色，而非继承按钮的 muted 文字色，
+          // 与表单图标预览、主面板卡片保持同色；选中态继续继承 text-white
+          className={
+            isSelected ? "flex-shrink-0" : "flex-shrink-0 text-foreground"
+          }
         />
       );
     }
@@ -314,7 +325,7 @@ export function ProviderPresetSelector({
   return (
     <div ref={searchContainerRef} className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <FormLabel>{t("providerPreset.label")}</FormLabel>
+        <Label>{t("providerPreset.label")}</Label>
         <div className="flex items-center gap-2">
           {searchOpen && (
             <Input
@@ -428,7 +439,7 @@ export function ProviderPresetSelector({
                 t("providerPreset.other")
               }
             >
-              {renderPresetIcon(entry.preset)}
+              {renderPresetIcon(entry.preset, isSelected)}
               <span className="truncate">
                 {getPresetDisplayName(entry.preset, t)}
               </span>
@@ -466,7 +477,7 @@ export function ProviderPresetSelector({
                 icon={preset.icon}
                 name={preset.name}
                 size={14}
-                className="flex-shrink-0"
+                className="flex-shrink-0 text-foreground"
               />
               <span className="truncate">{preset.name}</span>
               <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
