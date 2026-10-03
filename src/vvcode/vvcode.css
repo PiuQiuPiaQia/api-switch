@@ -391,6 +391,32 @@ body:has(.vv-app-loading) {
   font-size: 10px;
 }
 
+.vv-manual-auth {
+  margin-bottom: 14px;
+}
+
+.vv-manual-auth__url {
+  margin: 2px 0 4px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  color: #5c4a1f;
+  background: #fdf4dd;
+  font-size: 10px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: text;
+}
+
+.vv-manual-auth .vv-text-button {
+  min-height: 28px;
+  padding: 0;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
 .vv-login-card .vv-inline-error {
   margin-bottom: 14px;
 }

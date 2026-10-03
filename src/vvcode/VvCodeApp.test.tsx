@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { listen } from "@tauri-apps/api/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRODUCT } from "./config";
 import { previewBootstrap, previewSession } from "./mockData";
@@ -8,6 +15,7 @@ import VvCodeApp from "./VvCodeApp";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getBootstrap: vi.fn(),
+  beginOAuth: vi.fn(),
   getToolVersions: vi.fn(),
   getLatestToolVersions: vi.fn(),
   probeToolInstallations: vi.fn(),
@@ -17,7 +25,7 @@ vi.mock("./api", () => ({
   newApiApi: {
     getSession: mocks.getSession,
     getBootstrap: mocks.getBootstrap,
-    beginOAuth: vi.fn(),
+    beginOAuth: mocks.beginOAuth,
     logout: vi.fn(),
     ensureGroupTokens: vi.fn(),
   },
@@ -31,15 +39,28 @@ vi.mock("@/lib/api/settings", () => ({
   },
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
+
 vi.mock("./components/BrandMark", () => ({
   BrandMark: () => <span>VV Code</span>,
 }));
 
 vi.mock("./components/LoginScreen", () => ({
-  LoginScreen: ({ onPreview }: { onPreview: () => void }) => (
-    <button type="button" onClick={onPreview}>
-      进入预览
-    </button>
+  LoginScreen: ({
+    onPreview,
+    manualAuthUrl,
+  }: {
+    onPreview: () => void;
+    manualAuthUrl: string | null;
+  }) => (
+    <>
+      <button type="button" onClick={onPreview}>
+        进入预览
+      </button>
+      {manualAuthUrl && <div>手动授权链接: {manualAuthUrl}</div>}
+    </>
   ),
 }));
 
@@ -93,6 +114,7 @@ describe("VvCodeApp tool environment checks", () => {
     mocks.getSession.mockReset();
     mocks.getSession.mockResolvedValue(null);
     mocks.getBootstrap.mockReset();
+    mocks.beginOAuth.mockReset();
     mocks.getToolVersions.mockReset();
     mocks.getLatestToolVersions.mockReset();
     mocks.probeToolInstallations.mockReset();
@@ -102,6 +124,7 @@ describe("VvCodeApp tool environment checks", () => {
     mocks.getToolVersions.mockImplementation(async ([tool]: string[]) => [
       toolInfo(tool),
     ]);
+    vi.mocked(listen).mockClear();
   });
 
   it("checks every tool once on first entry and reuses the results while navigating", async () => {
@@ -170,6 +193,35 @@ describe("VvCodeApp tool environment checks", () => {
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["openclaw"]);
     expect(mocks.getToolVersions).toHaveBeenCalledWith(["hermes"]);
     expect(mocks.probeToolInstallations).not.toHaveBeenCalled();
+  });
+
+  it("shows the authorization URL for manual opening when the browser launch fails", async () => {
+    mocks.beginOAuth.mockReturnValue(new Promise(() => undefined));
+
+    render(<VvCodeApp />);
+    await screen.findByRole("button", { name: "进入预览" });
+
+    const oauthCall = vi
+      .mocked(listen)
+      .mock.calls.find(
+        ([event]) => event === "vvcode-oauth-browser-open-failed",
+      );
+    expect(oauthCall).toBeDefined();
+    const [, oauthHandler] = oauthCall!;
+    act(() => {
+      (oauthHandler as (event: { payload: unknown }) => void)({
+        payload: {
+          authorizationUrl:
+            "https://auth.example.com/api/oauth/vscode?state=abc",
+        },
+      });
+    });
+
+    expect(
+      await screen.findByText(
+        "手动授权链接: https://auth.example.com/api/oauth/vscode?state=abc",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("reloads groups with the API application identifier for each scenario", async () => {

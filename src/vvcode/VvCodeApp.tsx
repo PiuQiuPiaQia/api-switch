@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { ChevronRight, Cloud, Gauge, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -22,6 +23,7 @@ import { previewBootstrap, previewSession } from "./mockData";
 import { resolveAccountName } from "./userIdentity";
 import type {
   NewApiBootstrap,
+  NewApiBrowserOpenFailed,
   NewApiSession,
   ProductScenario,
   ScenarioId,
@@ -94,6 +96,7 @@ export default function VvCodeApp() {
   const [preview, setPreview] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [globalBaseUrl, setGlobalBaseUrl] = useState("");
@@ -324,6 +327,29 @@ export default function VvCodeApp() {
   }, [activeGroupAppId, loadBootstrap, session]);
 
   useEffect(() => {
+    // 浏览器自动打开失败时，后端保留本地回调监听并推送授权链接，由用户
+    // 手动在浏览器中完成授权。
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<NewApiBrowserOpenFailed>(
+      "vvcode-oauth-browser-open-failed",
+      (event) => setManualAuthUrl(event.payload.authorizationUrl),
+    )
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch(() => {
+        // Browser-only previews do not expose Tauri's event bridge.
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!session || initialToolCheckStartedRef.current) return;
     initialToolCheckStartedRef.current = true;
     void Promise.allSettled(
@@ -334,6 +360,7 @@ export default function VvCodeApp() {
   const handleLogin = async () => {
     setLoginBusy(true);
     setLoginError(null);
+    setManualAuthUrl(null);
     try {
       const nextSession = await newApiApi.beginOAuth(PRODUCT.newApiBaseUrl);
       setGlobalBaseUrl(loadSelectedGlobalBaseUrl(nextSession.serverUrl));
@@ -348,6 +375,7 @@ export default function VvCodeApp() {
       setLoginError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoginBusy(false);
+      setManualAuthUrl(null);
     }
   };
 
@@ -480,6 +508,7 @@ export default function VvCodeApp() {
       <LoginScreen
         busy={loginBusy}
         error={loginError}
+        manualAuthUrl={manualAuthUrl}
         onLogin={() => void handleLogin()}
         onPreview={handlePreview}
       />

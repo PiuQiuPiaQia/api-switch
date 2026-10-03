@@ -7,6 +7,7 @@
 pub(crate) mod brand;
 pub(crate) mod edition;
 mod newapi;
+mod open_url;
 mod restore;
 pub(crate) mod tray;
 pub(crate) mod updater;

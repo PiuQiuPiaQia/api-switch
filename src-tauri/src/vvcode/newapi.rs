@@ -14,12 +14,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
-use tauri_plugin_opener::OpenerExt;
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 use uuid::Uuid;
+
+use super::open_url::open_url_silent;
 
 const LEGACY_AUTHORIZE_PATH: &str = "/api/oauth/vscode";
 const LEGACY_TOKEN_PATH: &str = "/api/oauth/vscode/token";
@@ -30,6 +31,17 @@ const SESSION_FILE: &str = "newapi-session.json";
 const OAUTH_TTL_SECONDS: i64 = 10 * 60;
 const LOOPBACK_CALLBACK_PATH: &str = "/oauth/newapi";
 const MAX_LOOPBACK_HEADER_BYTES: usize = 16 * 1024;
+const OAUTH_BROWSER_OPEN_FAILED_EVENT: &str = "vvcode-oauth-browser-open-failed";
+
+/// Notifies the renderer that the system browser could not be launched, so it
+/// can show the authorization URL for manual opening while the loopback
+/// callback keeps waiting.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OauthBrowserOpenFailed {
+    authorization_url: String,
+    error: String,
+}
 
 #[derive(Debug, Clone)]
 struct PendingOAuth {
@@ -1002,12 +1014,17 @@ pub async fn newapi_oauth_begin(
         *slot = Some(pending);
     }
 
-    if let Err(error) = app
-        .opener()
-        .open_url(authorization_url.as_str(), None::<String>)
-    {
-        clear_pending_oauth();
-        return Err(format!("无法打开系统浏览器: {error}"));
+    if let Err(error) = open_url_silent(&app, authorization_url.as_str()) {
+        // 常见于 Windows 未设置默认浏览器：保留本地回调监听，把授权链接交给
+        // 前端降级展示，由用户手动在浏览器中完成授权。
+        log::warn!("自动打开系统浏览器失败: {error}");
+        let _ = app.emit(
+            OAUTH_BROWSER_OPEN_FAILED_EVENT,
+            OauthBrowserOpenFailed {
+                authorization_url: authorization_url.as_str().to_string(),
+                error,
+            },
+        );
     }
 
     let callback = match tokio::time::timeout(
