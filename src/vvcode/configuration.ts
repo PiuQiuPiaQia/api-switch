@@ -123,7 +123,6 @@ export function buildManagedProvider(
     websiteUrl: previous?.websiteUrl,
     meta: {
       ...previousMeta,
-      costMultiplier: previousMeta.costMultiplier ?? group.ratio,
       endpointAutoSelect: previousMeta.endpointAutoSelect ?? false,
       custom_endpoints: {
         ...previousEndpoints,

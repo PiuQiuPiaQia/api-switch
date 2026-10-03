@@ -17,11 +17,14 @@ mod gemini_mcp;
 mod grok_config;
 pub mod hermes_config;
 mod init_status;
+mod jsonc_document;
 mod lightweight;
 #[cfg(target_os = "linux")]
 mod linux_fix;
+pub mod live;
 mod mcode_config;
 mod mcp;
+pub mod mode;
 mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
@@ -64,7 +67,7 @@ pub use prompt::Prompt;
 pub use provider::{Provider, ProviderMeta};
 pub use services::{
     profile::{ProfilePayload, ProfileScope, ProfileService},
-    provider::reapply_current_codex_official_live,
+    provider::{reapply_current_codex_official_live, EditorSave, EditorView},
     skill::{migrate_skills_to_ssot, ImportSkillSelection},
     ConfigService, EndpointLatency, McpService, PromptService, ProviderService, ProxyService,
     SkillService, SpeedtestService,
@@ -565,6 +568,10 @@ pub fn run() {
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
 
+            // 补完上次崩溃时写到一半的客户端文件（写前意图在 ~/.cc-switch/live-state.json），
+            // 要在任何写客户端文件的启动步骤之前。
+            crate::mode::operation::recover_on_startup(&app_state.db);
+
             // ============================================================
             // 按表独立判断的导入逻辑（各类数据独立检查，互不影响）
             // ============================================================
@@ -630,7 +637,7 @@ pub fn run() {
             //
             // 先 import 后 seed 是有意为之：先把用户手动配置的 settings.json / auth.json / .env
             // 落成 "default" provider 设为 current，再追加官方预设（is_current=false）。
-            // 这样用户切到官方预设时，回填机制会保护原 live 配置不丢失。
+            // 降级回旧版时，旧版的回填和整份写入仍靠这一行保住用户原来的 live 配置。
             //
             // 捕获首次运行快照：所有全新装用户都会看到欢迎弹窗介绍 VV Code 的工作方式。
             // 读失败时默认不弹，宁可漏弹也不要因为故障打扰用户。
@@ -1061,26 +1068,6 @@ pub fn run() {
                     return;
                 }
 
-                // 检查是否有 Live 备份（表示上次异常退出时可能处于接管状态）
-                let has_backups = match state.db.has_any_live_backup().await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log::error!("检查 Live 备份失败: {e}");
-                        false
-                    }
-                };
-                // 检查 Live 配置是否仍处于被接管状态（包含占位符）
-                let live_taken_over = state.proxy_service.detect_takeover_in_live_configs();
-
-                if has_backups || live_taken_over {
-                    log::warn!("检测到上次异常退出（存在接管残留），正在恢复 Live 配置...");
-                    if let Err(e) = state.proxy_service.recover_from_crash().await {
-                        log::error!("恢复 Live 配置失败: {e}");
-                    } else {
-                        log::info!("Live 配置已恢复");
-                    }
-                }
-
                 // 必须排在 auto-extract 之前：先把历史泄漏进 Gemini 共享片段的凭据
                 // 清干净，否则紧接着的提取会基于被污染的 live 再写一遍。
                 if let Err(e) =
@@ -1094,8 +1081,13 @@ pub fn run() {
 
                 initialize_common_config_snippets(&state);
 
-                // 检查 settings 表中的代理状态，自动恢复代理服务
-                restore_proxy_state_on_startup(&state).await;
+                // 定下各应用的直连 / 代理模式（处理旧版遗留的接管状态），再把代理模式的
+                // 应用接上。要排在通用配置片段的自动提取之后：它读的是直连的 live。
+                crate::mode::controller::startup(&state).await;
+                // Codex 官方做路由、发布了 Stack 模型时，官方模型列表过期就在后台刷新。
+                crate::services::provider::codex_official_models::start_background_checks(
+                    state.inner().clone(),
+                );
 
                 // Periodic backup check (on startup)
                 if let Err(e) = state.db.periodic_backup_if_needed() {
@@ -1229,6 +1221,9 @@ pub fn run() {
             commands::get_providers,
             commands::add_provider,
             commands::update_provider,
+            commands::get_provider_editor_view,
+            commands::delete_provider,
+            commands::remove_provider_from_live_config,
             commands::switch_provider,
             vvcode::restore_official_configuration,
             commands::get_init_error,
@@ -1240,6 +1235,12 @@ pub fn run() {
             commands::probe_tool_installations,
             commands::fetch_models_for_config,
             commands::test_api_endpoints,
+            commands::get_claude_common_config_snippet,
+            commands::set_claude_common_config_snippet,
+            commands::get_common_config_snippet,
+            commands::set_common_config_snippet,
+            commands::extract_common_config_snippet,
+            commands::read_live_provider_settings,
             commands::get_settings,
             commands::save_settings,
             commands::has_codex_unify_history_backup,
@@ -1253,6 +1254,312 @@ pub fn run() {
             vvcode::newapi_ensure_group_tokens,
             vvcode::vvcode_check_for_update,
             vvcode::vvcode_install_update_and_restart,
+            commands::get_rectifier_config,
+            commands::set_rectifier_config,
+            commands::get_optimizer_config,
+            commands::set_optimizer_config,
+            commands::get_copilot_optimizer_config,
+            commands::set_copilot_optimizer_config,
+            commands::get_log_config,
+            commands::set_log_config,
+            commands::restart_app,
+            commands::install_update_and_restart,
+            commands::check_app_update_available,
+            commands::check_for_updates,
+            commands::is_portable_mode,
+            commands::copy_text_to_clipboard,
+            commands::get_claude_plugin_status,
+            commands::read_claude_plugin_config,
+            commands::apply_claude_plugin_config,
+            commands::is_claude_plugin_applied,
+            commands::apply_claude_onboarding_skip,
+            commands::clear_claude_onboarding_skip,
+            // Claude MCP management
+            commands::get_claude_mcp_status,
+            commands::read_claude_mcp_config,
+            commands::upsert_claude_mcp_server,
+            commands::delete_claude_mcp_server,
+            commands::validate_mcp_command,
+            // usage query
+            commands::queryProviderUsage,
+            commands::testUsageScript,
+            // subscription quota
+            commands::get_subscription_quota,
+            commands::get_codex_oauth_quota,
+            commands::get_codex_oauth_models,
+            commands::get_xai_oauth_models,
+            commands::get_xai_oauth_quota,
+            commands::get_coding_plan_quota,
+            commands::get_balance,
+            // New MCP via config.json (SSOT)
+            commands::get_mcp_config,
+            commands::upsert_mcp_server_in_config,
+            commands::delete_mcp_server_in_config,
+            commands::set_mcp_enabled,
+            // Unified MCP management
+            commands::get_mcp_servers,
+            commands::upsert_mcp_server,
+            commands::delete_mcp_server,
+            commands::toggle_mcp_app,
+            commands::import_mcp_from_apps,
+            // Prompt management
+            commands::get_prompts,
+            commands::upsert_prompt,
+            commands::delete_prompt,
+            commands::enable_prompt,
+            commands::import_prompt_from_file,
+            commands::get_current_prompt_file_content,
+            commands::get_pi_prompt_file,
+            commands::replace_pi_prompt_file,
+            commands::delete_pi_prompt_file,
+            commands::list_pi_prompt_templates,
+            commands::upsert_pi_prompt_template,
+            commands::delete_pi_prompt_template,
+            // Pi native provider and session views
+            commands::get_pi_current_state,
+            commands::update_pi_provider_usage_script,
+            commands::get_pi_session_discovery,
+            // Profile management (项目配置方案)
+            commands::list_profiles,
+            commands::create_profile,
+            commands::update_profile,
+            commands::delete_profile,
+            commands::clear_current_profile,
+            commands::apply_profile,
+            // Fetch OpenAI-compatible and Anthropic model lists. Response data structure:
+            // data[].id, data[]?.owned_by. Special: supports Zhipu OpenAI Responses models[].slug.
+            commands::fetch_models_for_config,
+            commands::get_opencode_models,
+            // ours: endpoint speed test + custom endpoint management
+            commands::test_api_endpoints,
+            commands::get_custom_endpoints,
+            commands::add_custom_endpoint,
+            commands::remove_custom_endpoint,
+            commands::update_endpoint_last_used,
+            // app_config_dir override via Store
+            commands::get_app_config_dir_override,
+            commands::set_app_config_dir_override,
+            // provider sort order management
+            commands::update_providers_sort_order,
+            // theirs: config import/export and dialogs
+            commands::export_config_to_file,
+            commands::import_config_from_file,
+            commands::webdav_test_connection,
+            commands::webdav_sync_upload,
+            commands::webdav_sync_download,
+            commands::webdav_sync_save_settings,
+            commands::webdav_sync_fetch_remote_info,
+            commands::s3_test_connection,
+            commands::s3_sync_upload,
+            commands::s3_sync_download,
+            commands::s3_sync_save_settings,
+            commands::s3_sync_fetch_remote_info,
+            commands::save_file_dialog,
+            commands::open_file_dialog,
+            commands::open_zip_file_dialog,
+            commands::create_db_backup,
+            commands::list_db_backups,
+            commands::restore_db_backup,
+            commands::rename_db_backup,
+            commands::delete_db_backup,
+            commands::sync_current_providers_live,
+            // Deep link import
+            commands::parse_deeplink,
+            commands::merge_deeplink_config,
+            commands::import_from_deeplink,
+            commands::import_from_deeplink_unified,
+            // Environment variable management
+            commands::check_env_conflicts,
+            commands::delete_env_vars,
+            commands::restore_env_backup,
+            // Skill management (v3.10.0+ unified)
+            commands::get_installed_skills,
+            commands::get_skill_backups,
+            commands::delete_skill_backup,
+            commands::install_skill_unified,
+            commands::uninstall_skill_unified,
+            commands::restore_skill_backup,
+            commands::toggle_skill_app,
+            commands::scan_unmanaged_skills,
+            commands::import_skills_from_apps,
+            commands::discover_available_skills,
+            commands::check_skill_updates,
+            commands::update_skill,
+            commands::migrate_skill_storage,
+            commands::search_skills_sh,
+            // Skill management (legacy API compatibility)
+            commands::get_skills,
+            commands::get_skills_for_app,
+            commands::install_skill,
+            commands::install_skill_for_app,
+            commands::uninstall_skill,
+            commands::uninstall_skill_for_app,
+            commands::get_skill_repos,
+            commands::add_skill_repo,
+            commands::remove_skill_repo,
+            commands::install_skills_from_zip,
+            // Auto launch
+            commands::set_auto_launch,
+            commands::get_auto_launch_status,
+            // Proxy server management
+            commands::start_proxy_server,
+            commands::stop_proxy_server,
+            commands::stop_proxy_with_restore,
+            commands::get_proxy_takeover_status,
+            commands::set_proxy_takeover_for_app,
+            commands::exit_proxy_apps_in_mode,
+            commands::get_direct_provider,
+            commands::get_proxy_status,
+            commands::get_proxy_config,
+            commands::update_proxy_config,
+            // Global & Per-App Config
+            commands::get_global_proxy_config,
+            commands::update_global_proxy_config,
+            commands::get_proxy_config_for_app,
+            commands::update_proxy_config_for_app,
+            commands::get_pricing_model_source,
+            commands::set_pricing_model_source,
+            commands::is_proxy_running,
+            commands::is_live_takeover_active,
+            commands::switch_proxy_provider,
+            commands::get_proxy_stack,
+            commands::set_proxy_stack_member,
+            commands::restart_codex_app_server_daemon,
+            // Proxy failover commands
+            commands::get_provider_health,
+            commands::reset_circuit_breaker,
+            commands::get_circuit_breaker_config,
+            commands::update_circuit_breaker_config,
+            commands::get_circuit_breaker_stats,
+            // Failover queue management
+            commands::get_failover_queue,
+            commands::get_available_providers_for_failover,
+            commands::add_to_failover_queue,
+            commands::remove_from_failover_queue,
+            commands::get_auto_failover_enabled,
+            commands::set_auto_failover_enabled,
+            // Usage statistics
+            commands::get_usage_summary,
+            commands::get_usage_summary_by_app,
+            commands::get_usage_trends,
+            commands::get_provider_stats,
+            commands::get_model_stats,
+            commands::get_request_logs,
+            commands::get_request_detail,
+            commands::get_model_pricing,
+            commands::update_model_pricing,
+            commands::update_model_pricing_batch,
+            commands::delete_model_pricing,
+            commands::get_models_dev_sync_config,
+            commands::save_models_dev_sync_config,
+            commands::record_models_dev_sync_result,
+            commands::check_provider_limits,
+            // Session usage sync
+            commands::sync_session_usage,
+            commands::rebuild_codex_usage,
+            commands::get_usage_data_sources,
+            // Stream health check
+            commands::stream_check_provider,
+            // Session manager
+            commands::list_sessions,
+            commands::get_session_messages,
+            commands::delete_session,
+            commands::delete_sessions,
+            commands::launch_session_terminal,
+            commands::get_tool_versions,
+            commands::run_tool_lifecycle_action,
+            commands::probe_tool_installations,
+            // Provider terminal
+            commands::open_provider_terminal,
+            // Universal Provider management
+            commands::get_universal_providers,
+            commands::get_universal_provider,
+            commands::upsert_universal_provider,
+            commands::delete_universal_provider,
+            commands::sync_universal_provider,
+            // OpenCode specific
+            commands::import_opencode_providers_from_live,
+            commands::get_opencode_live_provider_ids,
+            // OpenClaw specific
+            commands::import_openclaw_providers_from_live,
+            commands::get_openclaw_live_provider_ids,
+            commands::get_openclaw_live_provider,
+            commands::scan_openclaw_config_health,
+            commands::get_openclaw_default_model,
+            commands::set_openclaw_default_model,
+            commands::get_openclaw_model_catalog,
+            commands::set_openclaw_model_catalog,
+            commands::get_openclaw_agents_defaults,
+            commands::set_openclaw_agents_defaults,
+            commands::get_openclaw_env,
+            commands::set_openclaw_env,
+            commands::get_openclaw_tools,
+            commands::set_openclaw_tools,
+            // Hermes specific
+            commands::import_hermes_providers_from_live,
+            commands::get_hermes_live_provider_ids,
+            commands::get_hermes_live_provider,
+            commands::get_hermes_model_config,
+            commands::open_hermes_web_ui,
+            commands::launch_hermes_dashboard,
+            commands::get_hermes_memory,
+            commands::set_hermes_memory,
+            commands::get_hermes_memory_limits,
+            commands::set_hermes_memory_enabled,
+            // Global upstream proxy
+            commands::get_global_proxy_url,
+            commands::set_global_proxy_url,
+            commands::test_proxy_url,
+            commands::get_upstream_proxy_status,
+            commands::scan_local_proxies,
+            // Window theme control
+            commands::set_window_theme,
+            // Generic managed auth commands
+            commands::auth_start_login,
+            commands::auth_poll_for_account,
+            commands::auth_cancel_login,
+            commands::auth_list_accounts,
+            commands::auth_get_status,
+            commands::auth_remove_account,
+            commands::auth_set_default_account,
+            commands::auth_logout,
+            // Copilot OAuth commands (multi-account support)
+            commands::copilot_start_device_flow,
+            commands::copilot_poll_for_auth,
+            commands::copilot_poll_for_account,
+            commands::copilot_list_accounts,
+            commands::copilot_remove_account,
+            commands::copilot_set_default_account,
+            commands::copilot_get_auth_status,
+            commands::copilot_logout,
+            commands::copilot_is_authenticated,
+            commands::copilot_get_token,
+            commands::copilot_get_token_for_account,
+            commands::copilot_get_models,
+            commands::copilot_get_models_for_account,
+            commands::copilot_get_usage,
+            commands::copilot_get_usage_for_account,
+            // OMO commands
+            commands::read_omo_local_file,
+            commands::get_current_omo_provider_id,
+            commands::disable_current_omo,
+            commands::read_omo_slim_local_file,
+            commands::get_current_omo_slim_provider_id,
+            commands::disable_current_omo_slim,
+            // Workspace files (OpenClaw)
+            commands::read_workspace_file,
+            commands::write_workspace_file,
+            // Daily memory files (OpenClaw workspace)
+            commands::list_daily_memory_files,
+            commands::read_daily_memory_file,
+            commands::write_daily_memory_file,
+            commands::delete_daily_memory_file,
+            commands::search_daily_memory_files,
+            commands::open_workspace_directory,
+            // lightweight mode (for testing or low-resource environments)
+            commands::enter_lightweight_mode,
+            commands::exit_lightweight_mode,
+            commands::is_lightweight_mode,
         ]);
 
     let app = builder
@@ -1355,43 +1662,12 @@ pub fn run() {
 
 /// 应用退出前的清理工作
 ///
-/// 在应用退出前检查代理服务器状态，如果正在运行则停止代理并恢复 Live 配置。
-/// 确保 Claude Code/Codex/Gemini 的配置不会处于损坏状态。
-/// 使用 stop_with_restore_keep_state 保留 settings 表中的代理状态，下次启动时自动恢复。
+/// 把接上代理的客户端都指回直连（模式和代理路由保留，下次启动再接上），再停止代理。
+/// 客户端不能一直指着代理：开机自启默认关闭，CC Switch 一关客户端就连不上了。
 pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
     if let Some(state) = app_handle.try_state::<store::AppState>() {
-        let proxy_service = &state.proxy_service;
-
-        // 退出时也需要兜底：代理可能已崩溃/未运行，但 Live 接管残留仍在（占位符/备份）。
-        let has_backups = match state.db.has_any_live_backup().await {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("退出时检查 Live 备份失败: {e}");
-                false
-            }
-        };
-        let live_taken_over = proxy_service.detect_takeover_in_live_configs();
-        let needs_restore = has_backups || live_taken_over;
-
-        if needs_restore {
-            log::info!("检测到接管残留，开始恢复 Live 配置（保留代理状态）...");
-            // 使用 keep_state 版本，保留 settings 表中的代理状态
-            if let Err(e) = proxy_service.stop_with_restore_keep_state().await {
-                log::error!("退出时恢复 Live 配置失败: {e}");
-            } else {
-                log::info!("已恢复 Live 配置（代理状态已保留，下次启动将自动恢复）");
-            }
-            return;
-        }
-
-        // 非接管模式：代理在运行则仅停止代理
-        if proxy_service.is_running().await {
-            log::info!("检测到代理服务器正在运行，开始停止...");
-            if let Err(e) = proxy_service.stop().await {
-                log::error!("退出时停止代理失败: {e}");
-            }
-            log::info!("代理服务器清理完成");
-        }
+        crate::mode::controller::detach_all(state.inner()).await;
+        log::info!("退出清理完成：客户端已指回直连，代理已停止");
     }
 }
 
@@ -1415,76 +1691,20 @@ pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
-// ============================================================
-// 启动时恢复代理状态
-// ============================================================
-
-/// 启动时根据 proxy_config 表中的代理状态自动恢复代理服务
-///
-/// 检查 `proxy_config.enabled` 字段，如果有任一应用的状态为 `true`，
-/// 则自动启动代理服务并接管对应应用的 Live 配置。
-const PROXY_STARTUP_APP_TYPES: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
-
-async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static str> {
-    let mut apps = Vec::new();
-    for app_type in PROXY_STARTUP_APP_TYPES {
-        if db
-            .get_proxy_config_for_app(app_type)
-            .await
-            .is_ok_and(|config| config.enabled)
-        {
-            apps.push(app_type);
-        }
-    }
-    apps
-}
-
-async fn restore_proxy_state_on_startup(state: &store::AppState) {
-    // 收集需要恢复接管的应用列表（从 proxy_config.enabled 读取）
-    let apps_to_restore = enabled_proxy_apps_on_startup(&state.db).await;
-
-    if apps_to_restore.is_empty() {
-        log::debug!("启动时无需恢复代理状态");
-        return;
-    }
-
-    log::info!("检测到上次代理状态需要恢复，应用列表: {apps_to_restore:?}");
-
-    // 逐个恢复接管状态
-    for app_type in apps_to_restore {
-        match state
-            .proxy_service
-            .set_takeover_for_app(app_type, true)
-            .await
-        {
-            Ok(()) => {
-                log::info!("✓ 已恢复 {app_type} 的代理接管状态");
-            }
-            Err(e) => {
-                log::error!("✗ 恢复 {app_type} 的代理接管状态失败: {e}");
-                // 失败时清除该应用的状态，避免下次启动再次尝试
-                if let Err(clear_err) = state
-                    .proxy_service
-                    .set_takeover_for_app(app_type, false)
-                    .await
-                {
-                    log::error!("清除 {app_type} 代理状态失败: {clear_err}");
-                }
-            }
-        }
-    }
-}
-
 fn initialize_common_config_snippets(state: &store::AppState) {
     // Auto-extract common config snippets from clean live files when snippet is missing.
-    // This must run before proxy takeover is restored on startup, otherwise we'd read
-    // proxy-placeholder configs instead of the user's actual live settings.
+    // This must run before proxy mode is re-attached on startup, otherwise we'd read
+    // proxy-placeholder configs instead of the user's actual live settings. A client
+    // still attached from an update restart (no detach on the way out) is skipped too.
     for app_type in crate::app_config::AppType::all() {
         if !state
             .db
             .should_auto_extract_config_snippet(app_type.as_str())
             .unwrap_or(false)
         {
+            continue;
+        }
+        if state.proxy_service.live_has_proxy_placeholder(&app_type) {
             continue;
         }
 
@@ -1765,11 +1985,9 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_exit_request, enabled_proxy_apps_on_startup, redact_url_for_log,
-        redact_url_for_log_with_secrets, redact_url_origin_for_log, runtime_log_level_allows,
-        ExitRequestAction,
+        classify_exit_request, redact_url_for_log, redact_url_for_log_with_secrets,
+        redact_url_origin_for_log, runtime_log_level_allows, ExitRequestAction,
     };
-    use crate::database::Database;
 
     #[test]
     fn log_url_redaction_strips_credentials_and_query_keeps_path() {
@@ -1875,22 +2093,5 @@ mod tests {
             classify_exit_request(Some(1)),
             ExitRequestAction::CleanupAndExit
         );
-    }
-
-    #[tokio::test]
-    async fn startup_restore_includes_enabled_grokbuild_route() {
-        let db = Database::memory().expect("initialize database");
-        let mut config = db
-            .get_proxy_config_for_app("grokbuild")
-            .await
-            .expect("read Grok Build proxy config");
-        config.enabled = true;
-        db.update_proxy_config_for_app(config)
-            .await
-            .expect("enable Grok Build proxy config");
-
-        let apps = enabled_proxy_apps_on_startup(&db).await;
-
-        assert_eq!(apps, vec!["grokbuild"]);
     }
 }
