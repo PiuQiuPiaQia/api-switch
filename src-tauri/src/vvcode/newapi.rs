@@ -31,6 +31,11 @@ const SESSION_FILE: &str = "newapi-session.json";
 const OAUTH_TTL_SECONDS: i64 = 10 * 60;
 const LOOPBACK_CALLBACK_PATH: &str = "/oauth/newapi";
 const MAX_LOOPBACK_HEADER_BYTES: usize = 16 * 1024;
+/// 浏览器在真正发送回跳请求前可能先对回跳端口建立探测连接（连接后不发
+/// 数据或立即断开，常见于 Chrome/Edge 的 speculative preconnect 和安全软件
+/// 的端口扫描）。单个连接等待请求数据的上限，超时或读到空请求时放弃该
+/// 连接并继续等待真正的回调。
+const LOOPBACK_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 const OAUTH_BROWSER_OPEN_FAILED_EVENT: &str = "vvcode-oauth-browser-open-failed";
 
 /// Notifies the renderer that the system browser could not be launched, so it
@@ -890,16 +895,23 @@ async fn receive_loopback_callback(
             continue;
         }
 
-        let target = match read_loopback_target(&mut stream).await {
-            Ok(target) => target,
-            Err(error) => {
-                let title = format!("{} 登录回调无效", crate::vvcode::brand::DISPLAY_NAME);
-                let message = format!(
-                    "请返回 {} 后重新发起登录。",
-                    crate::vvcode::brand::DISPLAY_NAME
-                );
-                write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
-                return Err(error);
+        // 探测连接（连接后不发数据、发送垃圾数据或长时间挂起）不能让整个
+        // 登录失败，否则本地监听被提前拆除，浏览器随后到达的真实回调会得到
+        // ERR_CONNECTION_REFUSED。
+        let target = match tokio::time::timeout(
+            LOOPBACK_CONNECTION_TIMEOUT,
+            read_loopback_target(&mut stream),
+        )
+        .await
+        {
+            Ok(Ok(target)) => target,
+            Ok(Err(error)) => {
+                log::warn!("忽略无效的本地 OAuth 回调连接: {error}");
+                continue;
+            }
+            Err(_) => {
+                log::warn!("本地 OAuth 回调连接超时未收到请求，继续等待");
+                continue;
             }
         };
         let Some(callback) = parse_loopback_oauth_target(&target) else {
@@ -1312,6 +1324,40 @@ mod tests {
             tokio::spawn(
                 async move { receive_loopback_callback(listener, "expected-state").await },
             );
+
+        let mut stream = TcpStream::connect(address).await.expect("connect");
+        stream
+            .write_all(
+                b"GET /oauth/newapi?code=one-time-code&state=expected-state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .expect("write callback");
+        let mut response = Vec::new();
+        stream
+            .read_to_end(&mut response)
+            .await
+            .expect("read response");
+
+        let callback = receiver.await.expect("receiver task").expect("callback");
+        assert_eq!(callback.code.as_deref(), Some("one-time-code"));
+        assert!(String::from_utf8(response)
+            .expect("HTTP response")
+            .starts_with("HTTP/1.1 200 OK"));
+    }
+
+    #[tokio::test]
+    async fn skips_probe_connections_before_real_callback() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
+        let address = listener.local_addr().expect("listener address");
+        let receiver =
+            tokio::spawn(
+                async move { receive_loopback_callback(listener, "expected-state").await },
+            );
+
+        // 探测连接：连上后不发任何数据直接断开（浏览器 preconnect / 安全软件
+        // 端口扫描的表现），不应让整个登录失败。
+        let probe = TcpStream::connect(address).await.expect("probe connect");
+        drop(probe);
 
         let mut stream = TcpStream::connect(address).await.expect("connect");
         stream
