@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -990,9 +992,31 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     window.location.href = CALLBACK + encodeURIComponent(token);
   }
 
-  function hint(message, closable) {
+  var CARD_STYLE =
+    "position:fixed;z-index:2147483647;top:16px;left:50%;transform:translateX(-50%);" +
+    "display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);" +
+    "padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.35);" +
+    "background:linear-gradient(90deg,#4c1d95,#6d28d9);color:#fff;" +
+    "font:500 13px/1.6 system-ui,-apple-system,sans-serif;" +
+    "box-shadow:0 16px 40px rgba(76,29,149,.45),0 2px 6px rgba(0,0,0,.18)";
+  var PRIMARY_BUTTON_STYLE =
+    "height:34px;padding:0 16px;border:0;border-radius:9px;cursor:pointer;background:#fff;color:#4c1d95;" +
+    "font:600 13px/1 system-ui,-apple-system,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.15);white-space:nowrap";
+  var SECONDARY_BUTTON_STYLE =
+    "height:34px;padding:0 14px;border:1px solid rgba(255,255,255,.6);border-radius:9px;cursor:pointer;" +
+    "background:transparent;color:#fff;font:13px/1 system-ui,-apple-system,sans-serif;white-space:nowrap";
+  var INPUT_STYLE =
+    "height:34px;min-width:200px;padding:0 12px;border-radius:9px;border:2px solid #fbbf24;" +
+    "background:#fff;color:#211b35;font:13px/1.4 system-ui,-apple-system,sans-serif;outline:none;" +
+    "box-shadow:0 0 0 3px rgba(251,191,36,.25)";
+
+  function clearBar() {
     var existing = document.getElementById("vvcode-login-hint");
     if (existing) existing.remove();
+  }
+
+  function hint(message, closable) {
+    clearBar();
     if (!document.body) return;
     var bar = document.createElement("div");
     bar.id = "vvcode-login-hint";
@@ -1003,16 +1027,11 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
       var close = document.createElement("button");
       close.type = "button";
       close.textContent = "知道了";
-      close.style.cssText =
-        "margin-left:12px;border:0;border-radius:8px;padding:4px 10px;cursor:pointer;" +
-        "background:rgba(255,255,255,.18);color:#fff;font:inherit;white-space:nowrap";
+      close.style.cssText = SECONDARY_BUTTON_STYLE;
       close.onclick = function () { bar.remove(); };
       bar.appendChild(close);
     }
-    bar.style.cssText =
-      "position:fixed;z-index:2147483647;top:0;left:0;right:0;display:flex;align-items:center;" +
-      "justify-content:center;gap:8px;padding:8px 16px;background:#4c1d95;color:#fff;" +
-      "font:12px/1.5 system-ui,-apple-system,sans-serif;box-shadow:0 4px 16px rgba(76,29,149,.3)";
+    bar.style.cssText = CARD_STYLE;
     document.body.appendChild(bar);
   }
 
@@ -1194,33 +1213,32 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
   }
 
   function askPassword() {
-    var bar = document.getElementById("vvcode-login-hint");
-    if (bar) bar.remove();
+    clearBar();
     if (!document.body) return;
     var wrapper = document.createElement("div");
     wrapper.id = "vvcode-login-hint";
-    wrapper.style.cssText =
-      "position:fixed;z-index:2147483647;top:0;left:0;right:0;display:flex;align-items:center;" +
-      "justify-content:center;gap:8px;padding:8px 16px;background:#4c1d95;color:#fff;" +
-      "font:12px/1.5 system-ui,-apple-system,sans-serif;box-shadow:0 4px 16px rgba(76,29,149,.3)";
+    wrapper.style.cssText = CARD_STYLE;
+
     var label = document.createElement("span");
-    label.textContent = "自动创建访问令牌需要一次密码确认：";
+    label.style.cssText = "color:#fff;font-weight:600;white-space:nowrap";
+    label.textContent = "自动创建访问令牌：请输入账号密码";
+
     var input = document.createElement("input");
     input.type = "password";
     input.autocomplete = "current-password";
-    input.placeholder = "账户密码";
-    input.style.cssText =
-      "border:0;border-radius:8px;padding:5px 10px;font:inherit;min-width:180px;color:#211b35";
+    input.placeholder = "账号密码";
+    input.style.cssText = INPUT_STYLE;
+
     var confirm = document.createElement("button");
     confirm.type = "button";
     confirm.textContent = "自动创建";
-    confirm.style.cssText =
-      "border:0;border-radius:8px;padding:5px 12px;cursor:pointer;background:#fff;color:#4c1d95;font:inherit;font-weight:600";
+    confirm.style.cssText = PRIMARY_BUTTON_STYLE;
+
     var skip = document.createElement("button");
     skip.type = "button";
     skip.textContent = "手动创建";
-    skip.style.cssText =
-      "border:0;border-radius:8px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,.18);color:#fff;font:inherit";
+    skip.style.cssText = SECONDARY_BUTTON_STYLE;
+
     confirm.onclick = function () {
       var value = input.value;
       if (!value) {
@@ -1312,7 +1330,7 @@ pub async fn newapi_pat_login_begin(
     let login_url = Url::parse(&format!("{server_url}{SECURITY_PAGE_PATH}"))
         .map_err(|e| format!("登录地址无效: {e}"))?;
 
-    let _window = tauri::WebviewWindowBuilder::new(
+    let window = tauri::WebviewWindowBuilder::new(
         &app,
         PAT_LOGIN_WINDOW,
         tauri::WebviewUrl::External(login_url),
@@ -1324,9 +1342,21 @@ pub async fn newapi_pat_login_begin(
     .build()
     .map_err(|e| format!("无法打开登录窗口: {e}"))?;
 
+    // 用户直接关窗口时没有回调请求，主界面不能一直停在“等待登录完成”。
+    let closed = Arc::new(AtomicBool::new(false));
+    let closed_flag = closed.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+        ) {
+            closed_flag.store(true, Ordering::SeqCst);
+        }
+    });
+
     let token = match tokio::time::timeout(
         Duration::from_secs(PAT_LOGIN_TTL_SECONDS),
-        receive_pat_login_token(listener, &app),
+        receive_pat_login_token(listener, &app, &closed),
     )
     .await
     {
@@ -1346,6 +1376,7 @@ pub async fn newapi_pat_login_begin(
 async fn receive_pat_login_token(
     listener: TcpListener,
     app: &AppHandle,
+    closed: &AtomicBool,
 ) -> Result<String, String> {
     loop {
         let accepted = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await;
@@ -1354,7 +1385,9 @@ async fn receive_pat_login_token(
             Ok(Err(error)) => return Err(format!("等待登录结果失败: {error}")),
             Err(_) => {
                 // 用户关掉登录窗口后不再空等，直接结束本次登录。
-                if app.get_webview_window(PAT_LOGIN_WINDOW).is_none() {
+                if closed.load(Ordering::SeqCst)
+                    || app.get_webview_window(PAT_LOGIN_WINDOW).is_none()
+                {
                     return Err("登录窗口已关闭，登录未完成".to_string());
                 }
                 continue;
@@ -1376,6 +1409,9 @@ async fn receive_pat_login_token(
             }
             Err(_) => continue,
         };
+        if closed.load(Ordering::SeqCst) {
+            return Err("登录窗口已关闭，登录未完成".to_string());
+        }
         let Some(token) = parse_pat_login_target(&target) else {
             let message = format!(
                 "此本地地址仅用于接收 {} 登录结果。",
