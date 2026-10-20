@@ -26,6 +26,7 @@ describe("LoginScreen", () => {
 
   it("keeps the signed-out page focused on the primary login action", () => {
     const onLogin = vi.fn();
+    const onPatLogin = vi.fn();
 
     render(
       <LoginScreen
@@ -33,6 +34,7 @@ describe("LoginScreen", () => {
         error={null}
         manualAuthUrl={null}
         onLogin={onLogin}
+        onPatLogin={onPatLogin}
         onPreview={vi.fn()}
       />,
     );
@@ -47,6 +49,12 @@ describe("LoginScreen", () => {
     expect(screen.queryByText(/服务条款与隐私政策/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "一键登录" }));
+    expect(onPatLogin).toHaveBeenCalledTimes(1);
+    expect(onLogin).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "改用浏览器授权登录" }),
+    );
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
@@ -57,6 +65,7 @@ describe("LoginScreen", () => {
         error={null}
         manualAuthUrl={null}
         onLogin={vi.fn()}
+        onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,
     );
@@ -76,6 +85,7 @@ describe("LoginScreen", () => {
         error={null}
         manualAuthUrl={authUrl}
         onLogin={vi.fn()}
+        onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,
     );
@@ -97,6 +107,7 @@ describe("LoginScreen", () => {
         error={null}
         manualAuthUrl={null}
         onLogin={vi.fn()}
+        onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,
     );
@@ -112,6 +123,7 @@ describe("LoginScreen", () => {
         error="登录已失效，请重试"
         manualAuthUrl={null}
         onLogin={vi.fn()}
+        onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,
     );

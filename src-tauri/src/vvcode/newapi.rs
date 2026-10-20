@@ -1253,9 +1253,318 @@ pub async fn newapi_ensure_group_tokens(
     Err("网站中已存在过多不可用的客户端密钥，请先在密钥管理中清理后重试".to_string())
 }
 
+// ---------------------------------------------------------------------------
+// 应用内登录：在 webview 里完成站点登录，接管用户创建的 scoped 访问令牌
+// ---------------------------------------------------------------------------
+
+/// 新版 new-api 把面板凭据换成了 scoped 访问令牌（`nap_` 前缀），只允许在
+/// 浏览器会话里创建，且创建前必须通过一次安全验证。桌面端因此改在应用内的
+/// webview 里完成整个流程：
+/// 1. 打开站点安全设置页，用户在页面里登录；
+/// 2. 用户按提示创建访问令牌（安全验证在站点页面里完成，凭据不经过客户端）；
+/// 3. 注入脚本截获创建响应，把令牌回传到本地端口，应用写入会话并关闭窗口。
+const ACCESS_TOKENS_PATH: &str = "/api/user/access_tokens";
+const SECURITY_PAGE_PATH: &str = "/security";
+const PAT_LOGIN_WINDOW: &str = "vvcode-pat-login";
+const PAT_LOGIN_TTL_SECONDS: u64 = 15 * 60;
+const PAT_TOKEN_CALLBACK_PATH: &str = "/vvcode-token";
+/// 桌面端实际调用的接口需要的权限，必须与站点
+/// `middleware/access_token_routes.go` 中声明的 scope 保持一致。
+const DESKTOP_TOKEN_SCOPES: [&str; 4] = [
+    "profile:read",
+    "api_key:read",
+    "api_key:write",
+    "api_key:reveal",
+];
+
+const PAT_LOGIN_SCRIPT: &str = r#"(function () {
+  var PORT = "__PORT__";
+  var TARGET = "__TARGET__";
+  var CALLBACK = "http://127.0.0.1:" + PORT + "/vvcode-token?t=";
+  var REQUIRED = __SCOPES__;
+  var finished = false;
+
+  function finish(token) {
+    if (finished) return;
+    finished = true;
+    window.location.href = CALLBACK + encodeURIComponent(token);
+  }
+
+  function inspect(body) {
+    try {
+      var data = body && body.data ? body.data : null;
+      var raw = data && typeof data.token === "string" ? data.token : "";
+      if (!raw) return;
+      var scopes = (data.item && data.item.scopes) || [];
+      var missing = REQUIRED.filter(function (scope) { return scopes.indexOf(scope) < 0; });
+      if (missing.length) {
+        window.alert(
+          "这张访问令牌权限不足，请重新创建并勾选：\n" +
+          "· Profile：查看\n" +
+          "· API keys：查看、创建、查看完整密钥\n" +
+          "有效期建议选「永不过期」。\n缺少：" + missing.join("、")
+        );
+        return;
+      }
+      finish(raw);
+    } catch (error) {}
+  }
+
+  var originalFetch = window.fetch;
+  if (originalFetch) {
+    window.fetch = function (input, init) {
+      var pending = originalFetch.apply(this, arguments);
+      try {
+        var url = typeof input === "string" ? input : (input && input.url) || "";
+        var method = (init && init.method) || (input && input.method) || "GET";
+        if (String(method).toUpperCase() === "POST" && url.indexOf(TARGET) !== -1) {
+          pending.then(function (response) {
+            if (response && response.ok) {
+              response.clone().json().then(inspect).catch(function () {});
+            }
+          }).catch(function () {});
+        }
+      } catch (error) {}
+      return pending;
+    };
+  }
+
+  var open = XMLHttpRequest.prototype.open;
+  var send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__vvcodeRequest = { method: method, url: url };
+    return open.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function () {
+    var xhr = this;
+    xhr.addEventListener("load", function () {
+      try {
+        var meta = xhr.__vvcodeRequest || {};
+        var isCreate = String(meta.method).toUpperCase() === "POST" &&
+          String(meta.url).indexOf(TARGET) !== -1;
+        if (isCreate && xhr.status >= 200 && xhr.status < 300) {
+          inspect(JSON.parse(xhr.responseText));
+        }
+      } catch (error) {}
+    });
+    return send.apply(this, arguments);
+  };
+
+  function showHint() {
+    if (!document.body) return;
+    var hint = document.createElement("div");
+    hint.textContent =
+      "登录后请在「访问令牌」里点「创建访问令牌」：勾选 Profile 的“查看”和 API keys 的“查看 / 创建 / 查看完整密钥”，有效期选“永不过期”。创建成功后本窗口会自动关闭。";
+    hint.style.cssText =
+      "position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;padding:12px 16px;" +
+      "border-radius:12px;background:#4c1d95;color:#fff;font:13px/1.6 system-ui,-apple-system,sans-serif;" +
+      "box-shadow:0 8px 24px rgba(76,29,149,.35)";
+    document.body.appendChild(hint);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", showHint);
+  } else {
+    showHint();
+  }
+})();"#;
+
+fn pat_login_script(port: u16) -> String {
+    let scopes = DESKTOP_TOKEN_SCOPES
+        .iter()
+        .map(|scope| format!("\"{scope}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    PAT_LOGIN_SCRIPT
+        .replace("__PORT__", &port.to_string())
+        .replace("__TARGET__", ACCESS_TOKENS_PATH)
+        .replace("__SCOPES__", &format!("[{scopes}]"))
+}
+
+/// 在应用内打开站点安全设置页完成登录，返回已写入本地会话的摘要。
+#[tauri::command]
+pub async fn newapi_pat_login_begin(
+    app: AppHandle,
+    server_url: String,
+) -> Result<NewApiSessionSummary, String> {
+    let server_url = normalize_server_url(&server_url)?;
+    if let Some(existing) = app.get_webview_window(PAT_LOGIN_WINDOW) {
+        let _ = existing.close();
+    }
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| format!("无法启动本地登录回调监听: {e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("无法读取本地登录回调端口: {e}"))?
+        .port();
+    let login_url = Url::parse(&format!("{server_url}{SECURITY_PAGE_PATH}"))
+        .map_err(|e| format!("登录地址无效: {e}"))?;
+
+    let _window = tauri::WebviewWindowBuilder::new(
+        &app,
+        PAT_LOGIN_WINDOW,
+        tauri::WebviewUrl::External(login_url),
+    )
+    .title(format!("登录 {}", crate::vvcode::brand::DISPLAY_NAME))
+    .inner_size(1024.0, 780.0)
+    .center()
+    .initialization_script(&pat_login_script(port))
+    .build()
+    .map_err(|e| format!("无法打开登录窗口: {e}"))?;
+
+    let token = match tokio::time::timeout(
+        Duration::from_secs(PAT_LOGIN_TTL_SECONDS),
+        receive_pat_login_token(listener, &app),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err("登录窗口等待超时，请重新登录".to_string()),
+    };
+    if let Some(window) = app.get_webview_window(PAT_LOGIN_WINDOW) {
+        let _ = window.close();
+    }
+    focus_main_window(&app);
+
+    let session = session_from_access_token(&server_url, &token?).await?;
+    save_session(&session)?;
+    Ok(NewApiSessionSummary::from(&session))
+}
+
+async fn receive_pat_login_token(
+    listener: TcpListener,
+    app: &AppHandle,
+) -> Result<String, String> {
+    loop {
+        let accepted = tokio::time::timeout(Duration::from_secs(1), listener.accept()).await;
+        let (mut stream, peer) = match accepted {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(error)) => return Err(format!("等待登录结果失败: {error}")),
+            Err(_) => {
+                // 用户关掉登录窗口后不再空等，直接结束本次登录。
+                if app.get_webview_window(PAT_LOGIN_WINDOW).is_none() {
+                    return Err("登录窗口已关闭，登录未完成".to_string());
+                }
+                continue;
+            }
+        };
+        if !peer.ip().is_loopback() {
+            continue;
+        }
+        let target = match tokio::time::timeout(
+            LOOPBACK_CONNECTION_TIMEOUT,
+            read_loopback_target(&mut stream),
+        )
+        .await
+        {
+            Ok(Ok(target)) => target,
+            Ok(Err(error)) => {
+                log::warn!("忽略无效的登录回调连接: {error}");
+                continue;
+            }
+            Err(_) => continue,
+        };
+        let Some(token) = parse_pat_login_target(&target) else {
+            let message = format!(
+                "此本地地址仅用于接收 {} 登录结果。",
+                crate::vvcode::brand::DISPLAY_NAME
+            );
+            write_loopback_page(&mut stream, "404 Not Found", "页面不存在", &message).await;
+            continue;
+        };
+        write_loopback_page(
+            &mut stream,
+            "200 OK",
+            "登录信息已返回",
+            "可以关闭此窗口，应用正在完成登录。",
+        )
+        .await;
+        return Ok(token);
+    }
+}
+
+fn parse_pat_login_target(target: &str) -> Option<String> {
+    let (path, query) = target.split_once('?')?;
+    if path != PAT_TOKEN_CALLBACK_PATH {
+        return None;
+    }
+    url::form_urlencoded::parse(query.as_bytes())
+        .find(|(key, _)| key == "t")
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+/// 用刚拿到的访问令牌验证一次并组装本地会话（用户信息取自服务端，不信任
+/// 前端传入）。
+async fn session_from_access_token(
+    server_url: &str,
+    access_token: &str,
+) -> Result<StoredSession, String> {
+    let client = client()?;
+    let response = client
+        .get(endpoint(server_url, "/api/user/self"))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("校验访问令牌失败: {e}"))?;
+    let (status, value) = response_json(response).await?;
+    if !status.is_success() {
+        return Err(response_message(&value, "访问令牌无效，请重新登录"));
+    }
+    let user = data(&value);
+    let user_id = value_i64(user.get("id"));
+    let username = value_string(user.get("username"));
+    if user_id <= 0 || username.is_empty() {
+        return Err("读取账号信息失败，请重新登录".to_string());
+    }
+    let display_name = value_string(user.get("display_name")).or_else_value(&username);
+    Ok(StoredSession {
+        server_url: server_url.to_string(),
+        access_token: access_token.to_string(),
+        token_type: "Bearer".to_string(),
+        user_id,
+        username,
+        display_name,
+        role: value_i64(user.get("role")),
+        created_at: now_unix(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_pat_login_callback() {
+        assert_eq!(
+            parse_pat_login_target("/vvcode-token?t=nap_abc123").as_deref(),
+            Some("nap_abc123")
+        );
+        // 令牌里的特殊字符会被浏览器编码，解析时要还原。
+        assert_eq!(
+            parse_pat_login_target("/vvcode-token?t=nap_a%2Bb%3D").as_deref(),
+            Some("nap_a+b=")
+        );
+        assert_eq!(parse_pat_login_target("/oauth/newapi?code=abc"), None);
+        assert_eq!(parse_pat_login_target("/vvcode-token?t="), None);
+        assert_eq!(parse_pat_login_target("/vvcode-token"), None);
+    }
+
+    #[test]
+    fn injects_login_callback_port_and_scopes_into_script() {
+        let script = pat_login_script(4321);
+        assert!(script.contains("var PORT = \"4321\""));
+        assert!(script.contains("http://127.0.0.1:\" + PORT"));
+        assert!(script.contains(&format!("var TARGET = \"{ACCESS_TOKENS_PATH}\"")));
+        for scope in DESKTOP_TOKEN_SCOPES {
+            assert!(script.contains(&format!("\"{scope}\"")));
+        }
+        // 占位符必须全部替换，残留会让注入脚本直接报语法错误。
+        assert!(!script.contains("__PORT__"));
+        assert!(!script.contains("__TARGET__"));
+        assert!(!script.contains("__SCOPES__"));
+    }
 
     #[test]
     fn parses_loopback_oauth_callback() {

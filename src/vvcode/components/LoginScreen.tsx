@@ -11,6 +11,7 @@ interface LoginScreenProps {
   error: string | null;
   manualAuthUrl: string | null;
   onLogin: () => void;
+  onPatLogin: () => void;
   onPreview: () => void;
 }
 
@@ -21,6 +22,7 @@ export function LoginScreen({
   error,
   manualAuthUrl,
   onLogin,
+  onPatLogin,
   onPreview,
 }: LoginScreenProps) {
   const [authUrlCopied, setAuthUrlCopied] = useState(false);
@@ -131,7 +133,7 @@ export function LoginScreen({
             type="button"
             className="vv-primary-button vv-primary-button--large"
             disabled={busy || !configured}
-            onClick={onLogin}
+            onClick={onPatLogin}
           >
             {busy ? <Loader2 className="vv-spin" size={18} /> : null}
             {busy ? "等待登录完成…" : "一键登录"}
@@ -139,8 +141,17 @@ export function LoginScreen({
           </button>
 
           <p className="vv-login-card__hint">
-            将在浏览器中完成授权，成功后自动返回
+            登录窗口在应用内打开，授权凭证仅保存在本机
           </p>
+
+          <button
+            type="button"
+            className="vv-text-button"
+            disabled={busy || !configured}
+            onClick={onLogin}
+          >
+            改用浏览器授权登录
+          </button>
 
           {IS_PRODUCT_PREVIEW_AVAILABLE && !configured && (
             <button

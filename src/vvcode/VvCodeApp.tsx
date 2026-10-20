@@ -357,20 +357,23 @@ export default function VvCodeApp() {
     );
   }, [refreshToolEnvironment, session]);
 
-  const handleLogin = async () => {
+  const applySession = (nextSession: NewApiSession) => {
+    setGlobalBaseUrl(loadSelectedGlobalBaseUrl(nextSession.serverUrl));
+    const cached = loadCachedBootstrap(nextSession.userId);
+    if (cached) {
+      setBootstrap(cached);
+      setBootstrapScope("");
+    }
+    setSession(nextSession);
+    toast.success("登录成功，正在同步可用分组");
+  };
+
+  const runLogin = async (begin: () => Promise<NewApiSession>) => {
     setLoginBusy(true);
     setLoginError(null);
     setManualAuthUrl(null);
     try {
-      const nextSession = await newApiApi.beginOAuth(PRODUCT.newApiBaseUrl);
-      setGlobalBaseUrl(loadSelectedGlobalBaseUrl(nextSession.serverUrl));
-      const cached = loadCachedBootstrap(nextSession.userId);
-      if (cached) {
-        setBootstrap(cached);
-        setBootstrapScope("");
-      }
-      setSession(nextSession);
-      toast.success("登录成功，正在同步可用分组");
+      applySession(await begin());
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -378,6 +381,14 @@ export default function VvCodeApp() {
       setManualAuthUrl(null);
     }
   };
+
+  // 站点新版只认 scoped 访问令牌，面板令牌只能在登录会话里创建，因此默认
+  // 走应用内登录；浏览器 OAuth 保留给仍持有旧版令牌的账号。
+  const handlePatLogin = () =>
+    runLogin(() => newApiApi.beginPatLogin(PRODUCT.newApiBaseUrl));
+
+  const handleLogin = () =>
+    runLogin(() => newApiApi.beginOAuth(PRODUCT.newApiBaseUrl));
 
   const handlePreview = () => {
     setPreview(true);
@@ -510,6 +521,7 @@ export default function VvCodeApp() {
         error={loginError}
         manualAuthUrl={manualAuthUrl}
         onLogin={() => void handleLogin()}
+        onPatLogin={() => void handlePatLogin()}
         onPreview={handlePreview}
       />
     );

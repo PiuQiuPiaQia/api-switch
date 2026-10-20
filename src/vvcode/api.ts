@@ -12,6 +12,10 @@ export const newApiApi = {
     return await invoke("newapi_oauth_begin", { serverUrl });
   },
 
+  async beginPatLogin(serverUrl: string): Promise<NewApiSession> {
+    return await invoke("newapi_pat_login_begin", { serverUrl });
+  },
+
   async getSession(): Promise<NewApiSession | null> {
     return await invoke("newapi_get_session");
   },
