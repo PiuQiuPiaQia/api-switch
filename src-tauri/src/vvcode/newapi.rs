@@ -1050,6 +1050,14 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     } catch (error) {}
   }
 
+  function requestError(stage, response, json, fallbackMessage) {
+    var error = new Error((json && json.message) || fallbackMessage);
+    error.stage = stage;
+    error.status = response ? response.status : 0;
+    error.code = (json && json.code) || "";
+    return error;
+  }
+
   async function autoCreate() {
     if (creating || finished || !creds || !jwt) return;
     creating = true;
@@ -1075,7 +1083,7 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
       var verifyJson = await verified.json().catch(function () { return null; });
       creds = null;
       var proof = verifyJson && verifyJson.data && verifyJson.data.proof_token;
-      if (!proof) throw new Error((verifyJson && verifyJson.message) || "安全验证未通过");
+      if (!proof) throw requestError("verify", verified, verifyJson, "安全验证未通过");
 
       var created = await fetch(TARGET, {
         method: "POST",
@@ -1093,12 +1101,21 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
       });
       var createdJson = await created.json().catch(function () { return null; });
       var token = createdJson && createdJson.data && createdJson.data.token;
-      if (!token) throw new Error((createdJson && createdJson.message) || "创建访问令牌失败");
+      if (!token) throw requestError("create", created, createdJson, "创建访问令牌失败");
       finish(token);
     } catch (error) {
       creating = false;
+      creds = null;
+      var detail = (error && error.message ? error.message : "未知原因") +
+        (error && error.status ? " · HTTP " + error.status : "") +
+        (error && error.code ? " · " + error.code : "");
+      if (error && error.stage === "verify" && jwt) {
+        // 密码没通过校验时停在原地让用户重输，不要直接把人推到手动流程。
+        askPassword("自动创建失败：" + detail);
+        return;
+      }
       hint(
-        "自动创建访问令牌没有成功（" + (error && error.message ? error.message : "未知原因") +
+        "自动创建访问令牌没有成功（" + detail +
         "）。请在「访问令牌」里手动创建：勾选 Profile 的查看和 API keys 的查看/创建/查看完整密钥，有效期选永不过期。",
         true
       );
@@ -1212,16 +1229,23 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     }
   }
 
-  function askPassword() {
+  function askPassword(notice) {
     clearBar();
     if (!document.body) return;
     var wrapper = document.createElement("div");
     wrapper.id = "vvcode-login-hint";
     wrapper.style.cssText = CARD_STYLE;
 
+    if (notice) {
+      var noticeLine = document.createElement("span");
+      noticeLine.style.cssText = "color:#fde68a;font-weight:600;max-width:360px";
+      noticeLine.textContent = notice;
+      wrapper.appendChild(noticeLine);
+    }
+
     var label = document.createElement("span");
     label.style.cssText = "color:#fff;font-weight:600;white-space:nowrap";
-    label.textContent = "自动创建访问令牌：请输入账号密码";
+    label.textContent = notice ? "重新输入密码" : "自动创建访问令牌：请输入账号密码";
 
     var input = document.createElement("input");
     input.type = "password";
