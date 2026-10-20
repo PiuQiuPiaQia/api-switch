@@ -1317,9 +1317,14 @@ pub async fn newapi_pat_login_begin(
     server_url: String,
 ) -> Result<NewApiSessionSummary, String> {
     let server_url = normalize_server_url(&server_url)?;
-    if let Some(existing) = app.get_webview_window(PAT_LOGIN_WINDOW) {
-        let _ = existing.close();
+    // 上一次登录窗口可能还在销毁过程中，先用 destroy 立刻摘掉，再换一个唯一
+    // label 建新窗口，避免 “a webview with label ... already exists”。
+    for (label, existing) in app.webview_windows() {
+        if label.starts_with(PAT_LOGIN_WINDOW) {
+            let _ = existing.destroy();
+        }
     }
+    let window_label = format!("{PAT_LOGIN_WINDOW}-{}", now_unix());
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| format!("无法启动本地登录回调监听: {e}"))?;
@@ -1332,7 +1337,7 @@ pub async fn newapi_pat_login_begin(
 
     let window = tauri::WebviewWindowBuilder::new(
         &app,
-        PAT_LOGIN_WINDOW,
+        window_label.as_str(),
         tauri::WebviewUrl::External(login_url),
     )
     .title(format!("登录 {}", crate::vvcode::brand::DISPLAY_NAME))
@@ -1356,15 +1361,15 @@ pub async fn newapi_pat_login_begin(
 
     let token = match tokio::time::timeout(
         Duration::from_secs(PAT_LOGIN_TTL_SECONDS),
-        receive_pat_login_token(listener, &app, &closed),
+        receive_pat_login_token(listener, &app, window_label.as_str(), &closed),
     )
     .await
     {
         Ok(result) => result,
         Err(_) => Err("登录窗口等待超时，请重新登录".to_string()),
     };
-    if let Some(window) = app.get_webview_window(PAT_LOGIN_WINDOW) {
-        let _ = window.close();
+    if let Some(window) = app.get_webview_window(&window_label) {
+        let _ = window.destroy();
     }
     focus_main_window(&app);
 
@@ -1376,6 +1381,7 @@ pub async fn newapi_pat_login_begin(
 async fn receive_pat_login_token(
     listener: TcpListener,
     app: &AppHandle,
+    window_label: &str,
     closed: &AtomicBool,
 ) -> Result<String, String> {
     loop {
@@ -1386,7 +1392,7 @@ async fn receive_pat_login_token(
             Err(_) => {
                 // 用户关掉登录窗口后不再空等，直接结束本次登录。
                 if closed.load(Ordering::SeqCst)
-                    || app.get_webview_window(PAT_LOGIN_WINDOW).is_none()
+                    || app.get_webview_window(window_label).is_none()
                 {
                     return Err("登录窗口已关闭，登录未完成".to_string());
                 }
