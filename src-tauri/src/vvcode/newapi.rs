@@ -20,6 +20,7 @@ use url::Url;
 
 const DESKTOP_GROUPS_PATH: &str = "/api/desktop/groups";
 const USER_GROUPS_PATH: &str = "/api/user/self/groups";
+const USER_SELF_PATH: &str = "/api/user/self";
 const STATUS_PATH: &str = "/api/status";
 const SESSION_FILE: &str = "newapi-session.json";
 const MAX_LOOPBACK_HEADER_BYTES: usize = 16 * 1024;
@@ -696,8 +697,28 @@ async fn fetch_bootstrap_with_client(
         fetch_user_groups(client, session).await?
     };
 
+    // 分组接口不返回账户信息，余额、用量和分组要单独查一次 /api/user/self；
+    // 这个请求失败不应该让整页分组加载不出来，退化成会话里的基础信息即可。
+    let user = match authenticated_get(client, session, USER_SELF_PATH).await {
+        Ok((status, self_value)) if status.is_success() && response_succeeded(status, &self_value) => {
+            user_from_value(data(&self_value), session)
+        }
+        Ok((status, self_value)) => {
+            log::warn!(
+                "读取账户信息失败（HTTP {}）：{}",
+                status.as_u16(),
+                response_message(&self_value, "unknown error")
+            );
+            user_from_value(&Value::Null, session)
+        }
+        Err(error) => {
+            log::warn!("读取账户信息失败: {error}");
+            user_from_value(&Value::Null, session)
+        }
+    };
+
     Ok(NewApiBootstrap {
-        user: user_from_value(&Value::Null, session),
+        user,
         groups: groups_from_value(&value, &session.server_url)?,
         source: source.to_string(),
     })
