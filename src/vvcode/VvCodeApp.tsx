@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { ChevronRight, Cloud, Gauge, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -23,7 +22,6 @@ import { previewBootstrap, previewSession } from "./mockData";
 import { resolveAccountName } from "./userIdentity";
 import type {
   NewApiBootstrap,
-  NewApiBrowserOpenFailed,
   NewApiSession,
   ProductScenario,
   ScenarioId,
@@ -96,7 +94,6 @@ export default function VvCodeApp() {
   const [preview, setPreview] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [globalBaseUrl, setGlobalBaseUrl] = useState("");
@@ -326,28 +323,6 @@ export default function VvCodeApp() {
     if (session) void loadBootstrap(activeGroupAppId);
   }, [activeGroupAppId, loadBootstrap, session]);
 
-  useEffect(() => {
-    // 浏览器自动打开失败时，后端保留本地回调监听并推送授权链接，由用户
-    // 手动在浏览器中完成授权。
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    void listen<NewApiBrowserOpenFailed>(
-      "vvcode-oauth-browser-open-failed",
-      (event) => setManualAuthUrl(event.payload.authorizationUrl),
-    )
-      .then((dispose) => {
-        if (disposed) dispose();
-        else unlisten = dispose;
-      })
-      .catch(() => {
-        // Browser-only previews do not expose Tauri's event bridge.
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
 
   useEffect(() => {
     if (!session || initialToolCheckStartedRef.current) return;
@@ -371,24 +346,19 @@ export default function VvCodeApp() {
   const runLogin = async (begin: () => Promise<NewApiSession>) => {
     setLoginBusy(true);
     setLoginError(null);
-    setManualAuthUrl(null);
     try {
       applySession(await begin());
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoginBusy(false);
-      setManualAuthUrl(null);
-    }
+      }
   };
 
   // 站点新版只认 scoped 访问令牌，面板令牌只能在登录会话里创建，因此默认
   // 走应用内登录；浏览器 OAuth 保留给仍持有旧版令牌的账号。
   const handlePatLogin = () =>
     runLogin(() => newApiApi.beginPatLogin(PRODUCT.newApiBaseUrl));
-
-  const handleLogin = () =>
-    runLogin(() => newApiApi.beginOAuth(PRODUCT.newApiBaseUrl));
 
   const handlePreview = () => {
     setPreview(true);
@@ -519,8 +489,6 @@ export default function VvCodeApp() {
       <LoginScreen
         busy={loginBusy}
         error={loginError}
-        manualAuthUrl={manualAuthUrl}
-        onLogin={() => void handleLogin()}
         onPatLogin={() => void handlePatLogin()}
         onPreview={handlePreview}
       />

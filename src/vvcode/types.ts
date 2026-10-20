@@ -41,10 +41,6 @@ export interface NewApiSession {
   createdAt: number;
 }
 
-export interface NewApiBrowserOpenFailed {
-  authorizationUrl: string;
-  error: string;
-}
 
 export interface NewApiUser {
   id: number;

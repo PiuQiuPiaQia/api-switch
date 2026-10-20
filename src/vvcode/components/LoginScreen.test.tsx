@@ -1,11 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { copyText } from "@/lib/clipboard";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { LoginScreen } from "./LoginScreen";
-
-vi.mock("@/lib/clipboard", () => ({
-  copyText: vi.fn(() => Promise.resolve()),
-}));
 
 vi.mock("../config", () => ({
   PRODUCT: {
@@ -20,20 +15,13 @@ vi.mock("./AppUpdateControl", () => ({
 }));
 
 describe("LoginScreen", () => {
-  beforeEach(() => {
-    vi.mocked(copyText).mockClear();
-  });
-
   it("keeps the signed-out page focused on the primary login action", () => {
-    const onLogin = vi.fn();
     const onPatLogin = vi.fn();
 
     render(
       <LoginScreen
         busy={false}
         error={null}
-        manualAuthUrl={null}
-        onLogin={onLogin}
         onPatLogin={onPatLogin}
         onPreview={vi.fn()}
       />,
@@ -47,24 +35,20 @@ describe("LoginScreen", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/OAuth \+ PKCE/)).not.toBeInTheDocument();
     expect(screen.queryByText(/服务条款与隐私政策/)).not.toBeInTheDocument();
+    // 站点新版只认 scoped 访问令牌，浏览器登录入口已移除。
+    expect(
+      screen.queryByRole("button", { name: "改用浏览器授权登录" }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "一键登录" }));
     expect(onPatLogin).toHaveBeenCalledTimes(1);
-    expect(onLogin).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "改用浏览器授权登录" }),
-    );
-    expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a compact pending state while browser authorization is active", () => {
+  it("shows a compact pending state while the login window is open", () => {
     render(
       <LoginScreen
         busy
         error={null}
-        manualAuthUrl={null}
-        onLogin={vi.fn()}
         onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,
@@ -75,54 +59,11 @@ describe("LoginScreen", () => {
     ).toBeDisabled();
   });
 
-  it("offers the authorization URL for manual opening when the browser launch fails", async () => {
-    const authUrl = "https://auth.example.com/api/oauth/vscode?state=abc";
-    vi.mocked(copyText).mockResolvedValueOnce(undefined);
-
-    render(
-      <LoginScreen
-        busy
-        error={null}
-        manualAuthUrl={authUrl}
-        onLogin={vi.fn()}
-        onPatLogin={vi.fn()}
-        onPreview={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole("status")).toHaveTextContent("无法自动打开浏览器");
-    expect(screen.getByRole("status")).toHaveTextContent(authUrl);
-
-    fireEvent.click(screen.getByRole("button", { name: "复制授权链接" }));
-    await waitFor(() => expect(copyText).toHaveBeenCalledWith(authUrl));
-    expect(
-      await screen.findByRole("button", { name: "已复制" }),
-    ).toBeInTheDocument();
-  });
-
-  it("hides the manual authorization notice once it is not needed", () => {
-    render(
-      <LoginScreen
-        busy={false}
-        error={null}
-        manualAuthUrl={null}
-        onLogin={vi.fn()}
-        onPatLogin={vi.fn()}
-        onPreview={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "复制授权链接" })).toBeNull();
-  });
-
   it("keeps login failures next to the primary action", () => {
     render(
       <LoginScreen
         busy={false}
         error="登录已失效，请重试"
-        manualAuthUrl={null}
-        onLogin={vi.fn()}
         onPatLogin={vi.fn()}
         onPreview={vi.fn()}
       />,

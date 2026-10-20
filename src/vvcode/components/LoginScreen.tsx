@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
 import { ArrowRight, Check, Loader2, LockKeyhole, Orbit } from "lucide-react";
-import { toast } from "sonner";
-import { copyText } from "@/lib/clipboard";
 import { BrandMark } from "./BrandMark";
 import { AppUpdateControl } from "./AppUpdateControl";
 import { PRODUCT, IS_PRODUCT_PREVIEW_AVAILABLE } from "../config";
@@ -9,8 +6,6 @@ import { PRODUCT, IS_PRODUCT_PREVIEW_AVAILABLE } from "../config";
 interface LoginScreenProps {
   busy: boolean;
   error: string | null;
-  manualAuthUrl: string | null;
-  onLogin: () => void;
   onPatLogin: () => void;
   onPreview: () => void;
 }
@@ -20,29 +15,10 @@ const capabilities = ["检测本机工具环境", "切换可用模型分组"];
 export function LoginScreen({
   busy,
   error,
-  manualAuthUrl,
-  onLogin,
   onPatLogin,
   onPreview,
 }: LoginScreenProps) {
-  const [authUrlCopied, setAuthUrlCopied] = useState(false);
   const configured = Boolean(PRODUCT.newApiBaseUrl);
-
-  useEffect(() => {
-    if (!manualAuthUrl) setAuthUrlCopied(false);
-  }, [manualAuthUrl]);
-
-  const copyAuthUrl = async () => {
-    if (!manualAuthUrl) return;
-    try {
-      await copyText(manualAuthUrl);
-      setAuthUrlCopied(true);
-    } catch (copyError) {
-      toast.error(
-        copyError instanceof Error ? copyError.message : "复制授权链接失败",
-      );
-    }
-  };
 
   return (
     <main className="vv-login">
@@ -106,29 +82,6 @@ export function LoginScreen({
             </div>
           )}
 
-          {manualAuthUrl && (
-            <div className="vv-login-card__notice vv-manual-auth" role="status">
-              <strong>无法自动打开浏览器</strong>
-              <span>
-                请复制授权链接，在浏览器中打开完成登录，成功后会自动返回应用：
-              </span>
-              <code className="vv-manual-auth__url">{manualAuthUrl}</code>
-              <button
-                type="button"
-                className="vv-text-button"
-                onClick={() => void copyAuthUrl()}
-              >
-                {authUrlCopied ? (
-                  <>
-                    <Check size={13} /> 已复制
-                  </>
-                ) : (
-                  "复制授权链接"
-                )}
-              </button>
-            </div>
-          )}
-
           <button
             type="button"
             className="vv-primary-button vv-primary-button--large"
@@ -143,15 +96,6 @@ export function LoginScreen({
           <p className="vv-login-card__hint">
             登录窗口在应用内打开，授权凭证仅保存在本机
           </p>
-
-          <button
-            type="button"
-            className="vv-text-button"
-            disabled={busy || !configured}
-            onClick={onLogin}
-          >
-            改用浏览器授权登录
-          </button>
 
           {IS_PRODUCT_PREVIEW_AVAILABLE && !configured && (
             <button

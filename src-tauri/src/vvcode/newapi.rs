@@ -4,60 +4,30 @@
 //! renderer only receives a redacted session summary and normalized product
 //! catalog data.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use once_cell::sync::Lazy;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use url::Url;
-use uuid::Uuid;
 
-use super::open_url::open_url_silent;
 
-const LEGACY_AUTHORIZE_PATH: &str = "/api/oauth/vscode";
-const LEGACY_TOKEN_PATH: &str = "/api/oauth/vscode/token";
 const DESKTOP_GROUPS_PATH: &str = "/api/desktop/groups";
 const USER_GROUPS_PATH: &str = "/api/user/self/groups";
 const STATUS_PATH: &str = "/api/status";
 const SESSION_FILE: &str = "newapi-session.json";
-const OAUTH_TTL_SECONDS: i64 = 10 * 60;
-const LOOPBACK_CALLBACK_PATH: &str = "/oauth/newapi";
 const MAX_LOOPBACK_HEADER_BYTES: usize = 16 * 1024;
 /// 浏览器在真正发送回跳请求前可能先对回跳端口建立探测连接（连接后不发
 /// 数据或立即断开，常见于 Chrome/Edge 的 speculative preconnect 和安全软件
 /// 的端口扫描）。单个连接等待请求数据的上限，超时或读到空请求时放弃该
 /// 连接并继续等待真正的回调。
 const LOOPBACK_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
-const OAUTH_BROWSER_OPEN_FAILED_EVENT: &str = "vvcode-oauth-browser-open-failed";
 
-/// Notifies the renderer that the system browser could not be launched, so it
-/// can show the authorization URL for manual opening while the loopback
-/// callback keeps waiting.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OauthBrowserOpenFailed {
-    authorization_url: String,
-    error: String,
-}
 
-#[derive(Debug, Clone)]
-struct PendingOAuth {
-    server_url: String,
-    state: String,
-    verifier: String,
-    redirect_uri: String,
-    created_at: i64,
-}
-
-static PENDING_OAUTH: Lazy<Mutex<Option<PendingOAuth>>> = Lazy::new(|| Mutex::new(None));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,13 +66,6 @@ impl From<&StoredSession> for NewApiSessionSummary {
     }
 }
 
-#[derive(Debug, Clone)]
-struct NewApiOAuthCallback {
-    code: Option<String>,
-    state: Option<String>,
-    error: Option<String>,
-    error_description: Option<String>,
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -289,9 +252,6 @@ fn client() -> Result<Client, String> {
         .map_err(|e| format!("无法初始化网络客户端: {e}"))
 }
 
-fn oauth_random() -> String {
-    format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
-}
 
 fn response_message(value: &Value, fallback: &str) -> String {
     value
@@ -816,23 +776,6 @@ async fn fetch_bootstrap_with_group_key(
     Ok(bootstrap)
 }
 
-fn parse_loopback_oauth_target(target: &str) -> Option<NewApiOAuthCallback> {
-    if !target.starts_with('/') {
-        return None;
-    }
-    let url = Url::parse(&format!("http://127.0.0.1{target}")).ok()?;
-    if url.path() != LOOPBACK_CALLBACK_PATH {
-        return None;
-    }
-
-    let params: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
-    Some(NewApiOAuthCallback {
-        code: params.get("code").cloned(),
-        state: params.get("state").cloned(),
-        error: params.get("error").cloned(),
-        error_description: params.get("error_description").cloned(),
-    })
-}
 
 async fn read_loopback_target(stream: &mut TcpStream) -> Result<String, String> {
     let mut request = Vec::with_capacity(1024);
@@ -882,94 +825,7 @@ async fn write_loopback_page(stream: &mut TcpStream, status: &str, title: &str, 
     let _ = stream.shutdown().await;
 }
 
-async fn receive_loopback_callback(
-    listener: TcpListener,
-    expected_state: &str,
-) -> Result<NewApiOAuthCallback, String> {
-    loop {
-        let (mut stream, peer) = listener
-            .accept()
-            .await
-            .map_err(|e| format!("等待本地 OAuth 回调失败: {e}"))?;
-        if !peer.ip().is_loopback() {
-            continue;
-        }
 
-        // 探测连接（连接后不发数据、发送垃圾数据或长时间挂起）不能让整个
-        // 登录失败，否则本地监听被提前拆除，浏览器随后到达的真实回调会得到
-        // ERR_CONNECTION_REFUSED。
-        let target = match tokio::time::timeout(
-            LOOPBACK_CONNECTION_TIMEOUT,
-            read_loopback_target(&mut stream),
-        )
-        .await
-        {
-            Ok(Ok(target)) => target,
-            Ok(Err(error)) => {
-                log::warn!("忽略无效的本地 OAuth 回调连接: {error}");
-                continue;
-            }
-            Err(_) => {
-                log::warn!("本地 OAuth 回调连接超时未收到请求，继续等待");
-                continue;
-            }
-        };
-        let Some(callback) = parse_loopback_oauth_target(&target) else {
-            let message = format!(
-                "此本地地址仅用于接收 {} 登录回调。",
-                crate::vvcode::brand::DISPLAY_NAME
-            );
-            write_loopback_page(&mut stream, "404 Not Found", "页面不存在", &message).await;
-            continue;
-        };
-
-        if callback.state.as_deref() != Some(expected_state) {
-            let title = format!("{} 登录校验失败", crate::vvcode::brand::DISPLAY_NAME);
-            let message = format!(
-                "登录状态不匹配，请返回 {} 后重新尝试。",
-                crate::vvcode::brand::DISPLAY_NAME
-            );
-            write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
-            return Err("OAuth state 校验失败，请重新登录".to_string());
-        }
-
-        if callback.error.is_some() {
-            let title = format!("{} 登录未完成", crate::vvcode::brand::DISPLAY_NAME);
-            write_loopback_page(
-                &mut stream,
-                "400 Bad Request",
-                &title,
-                "授权已取消或服务端拒绝了请求，请返回应用查看详情。",
-            )
-            .await;
-        } else if callback
-            .code
-            .as_deref()
-            .is_some_and(|code| !code.trim().is_empty())
-        {
-            let title = format!("登录信息已返回 {}", crate::vvcode::brand::DISPLAY_NAME);
-            let message = format!(
-                "可以关闭此页面并回到应用，{} 正在完成登录。",
-                crate::vvcode::brand::DISPLAY_NAME
-            );
-            write_loopback_page(&mut stream, "200 OK", &title, &message).await;
-        } else {
-            let title = format!("{} 登录回调不完整", crate::vvcode::brand::DISPLAY_NAME);
-            let message = format!(
-                "回调中缺少授权信息，请返回 {} 后重新尝试。",
-                crate::vvcode::brand::DISPLAY_NAME
-            );
-            write_loopback_page(&mut stream, "400 Bad Request", &title, &message).await;
-        }
-        return Ok(callback);
-    }
-}
-
-fn clear_pending_oauth() {
-    if let Ok(mut pending) = PENDING_OAUTH.lock() {
-        *pending = None;
-    }
-}
 
 fn focus_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -977,162 +833,6 @@ fn focus_main_window(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
-}
-
-#[tauri::command]
-pub async fn newapi_oauth_begin(
-    app: AppHandle,
-    server_url: String,
-) -> Result<NewApiSessionSummary, String> {
-    let server_url = normalize_server_url(&server_url)?;
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .map_err(|e| format!("无法启动本地 OAuth 回调监听: {e}"))?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("无法读取本地 OAuth 回调端口: {e}"))?
-        .port();
-    let redirect_uri = format!("http://127.0.0.1:{port}{LOOPBACK_CALLBACK_PATH}");
-
-    let state = oauth_random();
-    let verifier = oauth_random();
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    let mut authorization_url =
-        Url::parse(&endpoint(&server_url, LEGACY_AUTHORIZE_PATH)).map_err(|e| e.to_string())?;
-    authorization_url
-        .query_pairs_mut()
-        .append_pair("state", &state)
-        .append_pair("code_challenge", &challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("redirect_uri", &redirect_uri);
-
-    let pending = PendingOAuth {
-        server_url,
-        state: state.clone(),
-        verifier,
-        redirect_uri,
-        created_at: now_unix(),
-    };
-    {
-        let mut slot = PENDING_OAUTH
-            .lock()
-            .map_err(|_| "OAuth 状态锁不可用".to_string())?;
-        if slot
-            .as_ref()
-            .is_some_and(|current| now_unix() - current.created_at <= OAUTH_TTL_SECONDS)
-        {
-            return Err("已有登录请求正在等待浏览器授权".to_string());
-        }
-        *slot = Some(pending);
-    }
-
-    if let Err(error) = open_url_silent(&app, authorization_url.as_str()) {
-        // 常见于 Windows 未设置默认浏览器：保留本地回调监听，把授权链接交给
-        // 前端降级展示，由用户手动在浏览器中完成授权。
-        log::warn!("自动打开系统浏览器失败: {error}");
-        let _ = app.emit(
-            OAUTH_BROWSER_OPEN_FAILED_EVENT,
-            OauthBrowserOpenFailed {
-                authorization_url: authorization_url.as_str().to_string(),
-                error,
-            },
-        );
-    }
-
-    let callback = match tokio::time::timeout(
-        Duration::from_secs(OAUTH_TTL_SECONDS as u64),
-        receive_loopback_callback(listener, &state),
-    )
-    .await
-    {
-        Ok(Ok(callback)) => callback,
-        Ok(Err(error)) => {
-            clear_pending_oauth();
-            focus_main_window(&app);
-            return Err(error);
-        }
-        Err(_) => {
-            clear_pending_oauth();
-            focus_main_window(&app);
-            return Err("OAuth 登录等待超时，请重新尝试".to_string());
-        }
-    };
-    focus_main_window(&app);
-
-    if let Some(error) = callback.error {
-        clear_pending_oauth();
-        return Err(callback.error_description.unwrap_or(error));
-    }
-    let Some(code) = callback.code.filter(|code| !code.trim().is_empty()) else {
-        clear_pending_oauth();
-        return Err("OAuth 回调缺少授权码".to_string());
-    };
-    let result = complete_newapi_oauth(code, state).await;
-    if result.is_err() {
-        clear_pending_oauth();
-    }
-    result
-}
-
-async fn complete_newapi_oauth(
-    code: String,
-    state: String,
-) -> Result<NewApiSessionSummary, String> {
-    if code.trim().is_empty() || state.trim().is_empty() {
-        return Err("OAuth 回调缺少授权码或 state".to_string());
-    }
-
-    let pending = PENDING_OAUTH
-        .lock()
-        .map_err(|_| "OAuth 状态锁不可用".to_string())?
-        .clone()
-        .ok_or_else(|| "登录请求已失效，请重新发起登录".to_string())?;
-    if pending.state != state {
-        return Err("OAuth state 校验失败，请重新登录".to_string());
-    }
-    if now_unix() - pending.created_at > OAUTH_TTL_SECONDS {
-        return Err("OAuth 登录请求已过期，请重新登录".to_string());
-    }
-
-    let response = client()?
-        .post(endpoint(&pending.server_url, LEGACY_TOKEN_PATH))
-        .form(&[
-            ("code", code.trim()),
-            ("code_verifier", pending.verifier.as_str()),
-            ("state", pending.state.as_str()),
-            ("redirect_uri", pending.redirect_uri.as_str()),
-        ])
-        .send()
-        .await
-        .map_err(|e| format!("交换登录凭据失败: {e}"))?;
-    let (status, value) = response_json(response).await?;
-    if !status.is_success() {
-        return Err(response_message(&value, "交换登录凭据失败"));
-    }
-
-    let access_token = value_string(value.get("access_token"));
-    let user_id = value_i64(value.get("user_id"));
-    if access_token.is_empty() || user_id <= 0 {
-        return Err("NewAPI 登录响应缺少 access_token 或 user_id".to_string());
-    }
-    let username = value_string(value.get("username"));
-    let display_name = value_string(value.get("display_name")).or_else_value(&username);
-    let session = StoredSession {
-        server_url: pending.server_url,
-        access_token,
-        token_type: value_string(value.get("token_type")).or_else_value("Bearer"),
-        user_id,
-        username,
-        display_name,
-        role: value_i64(value.get("role")),
-        created_at: now_unix(),
-    };
-    save_session(&session)?;
-    *PENDING_OAUTH
-        .lock()
-        .map_err(|_| "OAuth 状态锁不可用".to_string())? = None;
-
-    Ok(NewApiSessionSummary::from(&session))
 }
 
 #[tauri::command]
@@ -1145,9 +845,6 @@ pub fn newapi_logout() -> Result<bool, String> {
     let path = session_path();
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("无法清除本地登录会话: {e}"))?;
-    }
-    if let Ok(mut pending) = PENDING_OAUTH.lock() {
-        *pending = None;
     }
     Ok(true)
 }
@@ -1281,8 +978,11 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
   var PORT = "__PORT__";
   var TARGET = "__TARGET__";
   var CALLBACK = "http://127.0.0.1:" + PORT + "/vvcode-token?t=";
-  var REQUIRED = __SCOPES__;
+  var SCOPES = __SCOPES__;
   var finished = false;
+  var creds = null;
+  var jwt = null;
+  var creating = false;
 
   function finish(token) {
     if (finished) return;
@@ -1290,24 +990,100 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     window.location.href = CALLBACK + encodeURIComponent(token);
   }
 
-  function inspect(body) {
+  function hint(message, closable) {
+    var existing = document.getElementById("vvcode-login-hint");
+    if (existing) existing.remove();
+    if (!document.body) return;
+    var bar = document.createElement("div");
+    bar.id = "vvcode-login-hint";
+    var text = document.createElement("span");
+    text.textContent = message;
+    bar.appendChild(text);
+    if (closable) {
+      var close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "知道了";
+      close.style.cssText =
+        "margin-left:12px;border:0;border-radius:8px;padding:4px 10px;cursor:pointer;" +
+        "background:rgba(255,255,255,.18);color:#fff;font:inherit;white-space:nowrap";
+      close.onclick = function () { bar.remove(); };
+      bar.appendChild(close);
+    }
+    bar.style.cssText =
+      "position:fixed;z-index:2147483647;top:0;left:0;right:0;display:flex;align-items:center;" +
+      "justify-content:center;gap:8px;padding:8px 16px;background:#4c1d95;color:#fff;" +
+      "font:12px/1.5 system-ui,-apple-system,sans-serif;box-shadow:0 4px 16px rgba(76,29,149,.3)";
+    document.body.appendChild(bar);
+  }
+
+  function inspectCreate(body) {
     try {
       var data = body && body.data ? body.data : null;
       var raw = data && typeof data.token === "string" ? data.token : "";
       if (!raw) return;
       var scopes = (data.item && data.item.scopes) || [];
-      var missing = REQUIRED.filter(function (scope) { return scopes.indexOf(scope) < 0; });
+      var missing = SCOPES.filter(function (scope) { return scopes.indexOf(scope) < 0; });
       if (missing.length) {
-        window.alert(
-          "这张访问令牌权限不足，请重新创建并勾选：\n" +
-          "· Profile：查看\n" +
-          "· API keys：查看、创建、查看完整密钥\n" +
-          "有效期建议选「永不过期」。\n缺少：" + missing.join("、")
-        );
+        hint("这张访问令牌权限不足，请重新创建并勾选 Profile 的查看与 API keys 的查看/创建/查看完整密钥。缺少：" + missing.join("、"), true);
         return;
       }
       finish(raw);
     } catch (error) {}
+  }
+
+  async function autoCreate() {
+    if (creating || finished || !creds || !jwt) return;
+    creating = true;
+    try {
+      var context = { scopes: SCOPES, expires_at: 0 };
+      var verifyBody = {
+        method: "password",
+        scope: "access_token.generate",
+        context: context
+      };
+      if (creds.password) {
+        verifyBody.password = creds.password;
+      } else {
+        verifyBody.password_encrypted = creds.password_encrypted;
+        verifyBody.encryption_key_id = creds.encryption_key_id;
+      }
+      var verified = await fetch("/api/verify", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
+        body: JSON.stringify(verifyBody)
+      });
+      var verifyJson = await verified.json().catch(function () { return null; });
+      creds = null;
+      var proof = verifyJson && verifyJson.data && verifyJson.data.proof_token;
+      if (!proof) throw new Error((verifyJson && verifyJson.message) || "安全验证未通过");
+
+      var created = await fetch(TARGET, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + jwt,
+          "X-Security-Proof": proof
+        },
+        body: JSON.stringify({
+          name: "VV Code 桌面端",
+          scopes: SCOPES,
+          expires_at: 0
+        })
+      });
+      var createdJson = await created.json().catch(function () { return null; });
+      var token = createdJson && createdJson.data && createdJson.data.token;
+      if (!token) throw new Error((createdJson && createdJson.message) || "创建访问令牌失败");
+      finish(token);
+    } catch (error) {
+      creating = false;
+      hint(
+        "自动创建访问令牌没有成功（" + (error && error.message ? error.message : "未知原因") +
+        "）。请在「访问令牌」里手动创建：勾选 Profile 的查看和 API keys 的查看/创建/查看完整密钥，有效期选永不过期。",
+        true
+      );
+    }
   }
 
   var originalFetch = window.fetch;
@@ -1316,11 +1092,35 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
       var pending = originalFetch.apply(this, arguments);
       try {
         var url = typeof input === "string" ? input : (input && input.url) || "";
-        var method = (init && init.method) || (input && input.method) || "GET";
-        if (String(method).toUpperCase() === "POST" && url.indexOf(TARGET) !== -1) {
+        var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+        if (method === "POST" && url.indexOf("/api/user/login") !== -1 && url.indexOf("/login/") === -1) {
+          var bodyText = init && typeof init.body === "string" ? init.body : null;
+          pending.then(function (response) {
+            if (!response || !response.ok) return;
+            return response.clone().json().then(function (json) {
+              try {
+                var payload = bodyText ? JSON.parse(bodyText) : null;
+                if (payload && typeof payload.password === "string" && payload.password) {
+                  creds = { password: payload.password };
+                } else if (payload && payload.password_encrypted && payload.encryption_key_id) {
+                  creds = {
+                    password_encrypted: payload.password_encrypted,
+                    encryption_key_id: payload.encryption_key_id
+                  };
+                }
+                var data = json && json.data;
+                if (data && typeof data.access_token === "string" && data.access_token) {
+                  jwt = data.access_token;
+                }
+                void autoCreate();
+              } catch (error) {}
+            }).catch(function () {});
+          }).catch(function () {});
+        }
+        if (method === "POST" && url.indexOf(TARGET) !== -1) {
           pending.then(function (response) {
             if (response && response.ok) {
-              response.clone().json().then(inspect).catch(function () {});
+              response.clone().json().then(inspectCreate).catch(function () {});
             }
           }).catch(function () {});
         }
@@ -1332,40 +1132,151 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
   var open = XMLHttpRequest.prototype.open;
   var send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
-    this.__vvcodeRequest = { method: method, url: url };
+    this.__vvcodeRequest = { method: method, url: String(url) };
     return open.apply(this, arguments);
   };
-  XMLHttpRequest.prototype.send = function () {
+  XMLHttpRequest.prototype.send = function (body) {
     var xhr = this;
-    xhr.addEventListener("load", function () {
-      try {
-        var meta = xhr.__vvcodeRequest || {};
-        var isCreate = String(meta.method).toUpperCase() === "POST" &&
-          String(meta.url).indexOf(TARGET) !== -1;
-        if (isCreate && xhr.status >= 200 && xhr.status < 300) {
-          inspect(JSON.parse(xhr.responseText));
-        }
-      } catch (error) {}
-    });
+    var meta = xhr.__vvcodeRequest || {};
+    var method = String(meta.method || "GET").toUpperCase();
+    var url = String(meta.url || "");
+    if (method === "POST" && url.indexOf("/api/user/login") !== -1 && url.indexOf("/login/") === -1) {
+      xhr.addEventListener("load", function () {
+        try {
+          if (xhr.status < 200 || xhr.status >= 300) return;
+          var payload = typeof body === "string" ? JSON.parse(body) : null;
+          if (payload && typeof payload.password === "string" && payload.password) {
+            creds = { password: payload.password };
+          } else if (payload && payload.password_encrypted && payload.encryption_key_id) {
+            creds = {
+              password_encrypted: payload.password_encrypted,
+              encryption_key_id: payload.encryption_key_id
+            };
+          }
+          var json = JSON.parse(xhr.responseText);
+          var data = json && json.data;
+          if (data && typeof data.access_token === "string" && data.access_token) {
+            jwt = data.access_token;
+          }
+          void autoCreate();
+        } catch (error) {}
+      });
+    }
+    if (method === "POST" && url.indexOf(TARGET) !== -1) {
+      xhr.addEventListener("load", function () {
+        try {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            inspectCreate(JSON.parse(xhr.responseText));
+          }
+        } catch (error) {}
+      });
+    }
     return send.apply(this, arguments);
   };
 
-  function showHint() {
+  async function ensureJwt() {
+    if (jwt) return true;
+    try {
+      var response = await fetch("/api/user/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!response.ok) return false;
+      var json = await response.json();
+      var token = json && json.data && json.data.access_token;
+      if (!token) return false;
+      jwt = token;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function askPassword() {
+    var bar = document.getElementById("vvcode-login-hint");
+    if (bar) bar.remove();
     if (!document.body) return;
-    var hint = document.createElement("div");
-    hint.textContent =
-      "登录后请在「访问令牌」里点「创建访问令牌」：勾选 Profile 的“查看”和 API keys 的“查看 / 创建 / 查看完整密钥”，有效期选“永不过期”。创建成功后本窗口会自动关闭。";
-    hint.style.cssText =
-      "position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;padding:12px 16px;" +
-      "border-radius:12px;background:#4c1d95;color:#fff;font:13px/1.6 system-ui,-apple-system,sans-serif;" +
-      "box-shadow:0 8px 24px rgba(76,29,149,.35)";
-    document.body.appendChild(hint);
+    var wrapper = document.createElement("div");
+    wrapper.id = "vvcode-login-hint";
+    wrapper.style.cssText =
+      "position:fixed;z-index:2147483647;top:0;left:0;right:0;display:flex;align-items:center;" +
+      "justify-content:center;gap:8px;padding:8px 16px;background:#4c1d95;color:#fff;" +
+      "font:12px/1.5 system-ui,-apple-system,sans-serif;box-shadow:0 4px 16px rgba(76,29,149,.3)";
+    var label = document.createElement("span");
+    label.textContent = "自动创建访问令牌需要一次密码确认：";
+    var input = document.createElement("input");
+    input.type = "password";
+    input.autocomplete = "current-password";
+    input.placeholder = "账户密码";
+    input.style.cssText =
+      "border:0;border-radius:8px;padding:5px 10px;font:inherit;min-width:180px;color:#211b35";
+    var confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.textContent = "自动创建";
+    confirm.style.cssText =
+      "border:0;border-radius:8px;padding:5px 12px;cursor:pointer;background:#fff;color:#4c1d95;font:inherit;font-weight:600";
+    var skip = document.createElement("button");
+    skip.type = "button";
+    skip.textContent = "手动创建";
+    skip.style.cssText =
+      "border:0;border-radius:8px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,.18);color:#fff;font:inherit";
+    confirm.onclick = function () {
+      var value = input.value;
+      if (!value) {
+        input.focus();
+        return;
+      }
+      creds = { password: value };
+      wrapper.remove();
+      void autoCreate();
+    };
+    input.onkeydown = function (event) {
+      if (event.key === "Enter") confirm.click();
+    };
+    skip.onclick = function () {
+      wrapper.remove();
+      hint(
+        "请在「访问令牌」里手动创建：勾选 Profile 的查看和 API keys 的查看/创建/查看完整密钥，有效期选永不过期。",
+        true
+      );
+    };
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    wrapper.appendChild(confirm);
+    wrapper.appendChild(skip);
+    document.body.appendChild(wrapper);
+    input.focus();
+  }
+
+  function onReady() {
+    if (finished) return;
+    // 登录动作发生在本窗口时密码已经拿到，直接自动创建；否则（会话仍然
+    // 有效、或第三方登录）让用户补一次密码，其余步骤仍然自动。
+    if (creds) {
+      void autoCreate();
+      return;
+    }
+    window.setTimeout(function () {
+      if (finished || creating || creds) return;
+      void ensureJwt().then(function (ok) {
+        if (finished || creating || creds) return;
+        if (ok) {
+          askPassword();
+          return;
+        }
+        hint(
+          "登录后点「创建访问令牌」：勾选 Profile 的“查看”和 API keys 的“查看 / 创建 / 查看完整密钥”，有效期选“永不过期”。完成后本窗口自动关闭。",
+          true
+        );
+      });
+    }, 1500);
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", showHint);
+    document.addEventListener("DOMContentLoaded", onReady);
   } else {
-    showHint();
+    onReady();
   }
 })();"#;
 
@@ -1567,21 +1478,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_loopback_oauth_callback() {
-        let callback =
-            parse_loopback_oauth_target("/oauth/newapi?code=one-time-code&state=expected-state")
-                .expect("loopback callback");
-        assert_eq!(callback.code.as_deref(), Some("one-time-code"));
-        assert_eq!(callback.state.as_deref(), Some("expected-state"));
-    }
-
-    #[test]
-    fn rejects_non_oauth_loopback_path() {
-        assert!(parse_loopback_oauth_target("/favicon.ico").is_none());
-        assert!(parse_loopback_oauth_target("https://example.com/oauth/newapi").is_none());
-    }
-
-    #[test]
     fn managed_token_name_uses_a_suffix_for_a_replacement_key() {
         assert_eq!(
             managed_token_name("daily-codex-pro", Some(2)).unwrap(),
@@ -1623,69 +1519,6 @@ mod tests {
             group_models_from_value(&value).unwrap(),
             vec!["model-b", "model-a"]
         );
-    }
-
-    #[tokio::test]
-    async fn receives_loopback_callback_over_http() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
-        let address = listener.local_addr().expect("listener address");
-        let receiver =
-            tokio::spawn(
-                async move { receive_loopback_callback(listener, "expected-state").await },
-            );
-
-        let mut stream = TcpStream::connect(address).await.expect("connect");
-        stream
-            .write_all(
-                b"GET /oauth/newapi?code=one-time-code&state=expected-state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            )
-            .await
-            .expect("write callback");
-        let mut response = Vec::new();
-        stream
-            .read_to_end(&mut response)
-            .await
-            .expect("read response");
-
-        let callback = receiver.await.expect("receiver task").expect("callback");
-        assert_eq!(callback.code.as_deref(), Some("one-time-code"));
-        assert!(String::from_utf8(response)
-            .expect("HTTP response")
-            .starts_with("HTTP/1.1 200 OK"));
-    }
-
-    #[tokio::test]
-    async fn skips_probe_connections_before_real_callback() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
-        let address = listener.local_addr().expect("listener address");
-        let receiver =
-            tokio::spawn(
-                async move { receive_loopback_callback(listener, "expected-state").await },
-            );
-
-        // 探测连接：连上后不发任何数据直接断开（浏览器 preconnect / 安全软件
-        // 端口扫描的表现），不应让整个登录失败。
-        let probe = TcpStream::connect(address).await.expect("probe connect");
-        drop(probe);
-
-        let mut stream = TcpStream::connect(address).await.expect("connect");
-        stream
-            .write_all(
-                b"GET /oauth/newapi?code=one-time-code&state=expected-state HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            )
-            .await
-            .expect("write callback");
-        let mut response = Vec::new();
-        stream
-            .read_to_end(&mut response)
-            .await
-            .expect("read response");
-
-        let callback = receiver.await.expect("receiver task").expect("callback");
-        assert_eq!(callback.code.as_deref(), Some("one-time-code"));
-        assert!(String::from_utf8(response)
-            .expect("HTTP response")
-            .starts_with("HTTP/1.1 200 OK"));
     }
 
     #[test]

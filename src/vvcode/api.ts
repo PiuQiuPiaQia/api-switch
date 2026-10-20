@@ -8,10 +8,6 @@ import type {
 import type { AppId } from "@/lib/api/types";
 
 export const newApiApi = {
-  async beginOAuth(serverUrl: string): Promise<NewApiSession> {
-    return await invoke("newapi_oauth_begin", { serverUrl });
-  },
-
   async beginPatLogin(serverUrl: string): Promise<NewApiSession> {
     return await invoke("newapi_pat_login_begin", { serverUrl });
   },

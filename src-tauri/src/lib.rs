@@ -1245,7 +1245,6 @@ pub fn run() {
             commands::save_settings,
             commands::has_codex_unify_history_backup,
             commands::restore_codex_unified_history,
-            vvcode::newapi_oauth_begin,
             vvcode::newapi_pat_login_begin,
             vvcode::newapi_get_session,
             vvcode::newapi_logout,
