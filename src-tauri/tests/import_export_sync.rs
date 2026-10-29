@@ -417,6 +417,7 @@ command = "echo"
                 "command": "prev"
             }),
             apps: vv_code_lib::McpApps {
+                agy: false,
                 claude: false,
                 codex: false, // 初始未启用
                 gemini: false,
@@ -424,6 +425,10 @@ command = "echo"
                 opencode: false,
                 hermes: false,
                 mcode: false,
+                kimi: false,
+                dsh: false,
+                pi: false,
+                omp: false,
             },
             description: None,
             homepage: None,
@@ -548,6 +553,7 @@ fn import_from_claude_merges_into_config() {
                 "command": "prev"
             }),
             apps: vv_code_lib::McpApps {
+                agy: false,
                 claude: false, // 初始未启用
                 codex: false,
                 gemini: false,
@@ -555,6 +561,10 @@ fn import_from_claude_merges_into_config() {
                 opencode: false,
                 hermes: false,
                 mcode: false,
+                kimi: false,
+                dsh: false,
+                pi: false,
+                omp: false,
             },
             description: None,
             homepage: None,
@@ -595,7 +605,7 @@ fn create_backup_skips_missing_file() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
-    let config_path = home.join(".cc-switch").join("config.json");
+    let config_path = home.join(".vv-code").join("config.json");
 
     // 未创建文件时应返回空字符串，不报错
     let result = ConfigService::create_backup(&config_path).expect("create backup");
@@ -610,7 +620,7 @@ fn create_backup_generates_snapshot_file() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
-    let config_dir = home.join(".cc-switch");
+    let config_dir = home.join(".vv-code");
     let config_path = config_dir.join("config.json");
     fs::create_dir_all(&config_dir).expect("prepare config dir");
     fs::write(&config_path, r#"{"version":2}"#).expect("write config file");
@@ -640,7 +650,7 @@ fn create_backup_retains_only_latest_entries() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
-    let config_dir = home.join(".cc-switch");
+    let config_dir = home.join(".vv-code");
     let config_path = config_dir.join("config.json");
     fs::create_dir_all(&config_dir).expect("prepare config dir");
     fs::write(&config_path, r#"{"version":3}"#).expect("write config file");

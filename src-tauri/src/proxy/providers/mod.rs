@@ -17,6 +17,7 @@ mod claude;
 mod codex;
 pub(crate) mod codex_chat_common;
 pub mod codex_chat_history;
+mod codex_chat_tool_history;
 pub(crate) mod codex_compaction;
 pub mod codex_oauth_auth;
 pub(crate) mod codex_responses_sse;
@@ -28,6 +29,7 @@ pub mod gemini_shadow;
 pub(crate) mod inline_think;
 pub mod models;
 pub(crate) mod reasoning_bridge;
+pub(crate) mod responses_late_arguments;
 pub mod streaming;
 pub mod streaming_codex_anthropic;
 pub mod streaming_codex_chat;
@@ -62,7 +64,8 @@ pub use codex::CodexAdapter;
 pub use codex::{
     apply_codex_chat_upstream_model, apply_codex_upstream_model, codex_provider_upstream_model,
     codex_stack_upstream_rejects_web_search, inject_codex_chat_prompt_cache_key,
-    is_codex_official_provider, provider_needs_responses_namespace_flatten,
+    is_codex_official_provider, is_codex_responses_endpoint,
+    provider_needs_responses_late_arguments_repair, provider_needs_responses_namespace_flatten,
     resolve_codex_catalog_tool_profile, resolve_codex_chat_reasoning_config,
     should_convert_codex_responses_to_anthropic, should_convert_codex_responses_to_chat,
     strip_codex_hosted_web_search,
@@ -212,7 +215,12 @@ impl ProviderType {
             }
             AppType::GrokBuild => ProviderType::Codex,
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderType::Codex,
-            AppType::Pi | AppType::Mcode => return None,
+            AppType::Pi
+            | AppType::Mcode
+            | AppType::Kimi
+            | AppType::Dsh
+            | AppType::Omp
+            | AppType::Agy => return None,
         };
         Some(provider_type)
     }
@@ -268,7 +276,12 @@ pub fn get_adapter(app_type: &AppType) -> Option<Box<dyn ProviderAdapter>> {
         AppType::Gemini => Box::new(GeminiAdapter::new()),
         AppType::GrokBuild => Box::new(CodexAdapter::new()),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => Box::new(CodexAdapter::new()),
-        AppType::Pi | AppType::Mcode => return None,
+        AppType::Pi
+        | AppType::Mcode
+        | AppType::Kimi
+        | AppType::Dsh
+        | AppType::Omp
+        | AppType::Agy => return None,
     })
 }
 

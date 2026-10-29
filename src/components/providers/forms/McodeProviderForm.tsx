@@ -12,14 +12,14 @@ import { useProvidersQuery } from "@/lib/query/queries";
 import type { ProviderFormData } from "@/lib/schemas/provider";
 import type { OpenCodeModel, OpenCodeProviderOptions } from "@/types";
 import { mcodeProviderPresets } from "@/config/mcodeProviderPresets";
+import { dshProviderPresets } from "@/config/dshProviderPresets";
 import { mcodePresetModelSources } from "@/config/presetModelMetadata";
 import { BasicFormFields } from "./BasicFormFields";
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
 import { normalizeRequestHeaders } from "./helpers/requestHeaders";
 import {
-  isKnownOpencodeOptionKey,
-  OPENCODE_EXTRA_OPTION_DRAFT_PREFIX,
+  mergeOpencodeExtraOptionRows,
   toOpencodeExtraOptions,
 } from "./helpers/opencodeFormUtils";
 import type { ProviderFormProps } from "./ProviderForm";
@@ -29,10 +29,6 @@ const API_FORMATS = [
   { value: "openai-completions", label: "OpenAI Chat Completions" },
   { value: "openai-responses", label: "OpenAI Responses" },
 ];
-const PRESET_ENTRIES = mcodeProviderPresets.map((preset, index) => ({
-  id: String(index),
-  preset,
-}));
 const configSchema = z
   .object({
     api: z.string().optional(),
@@ -70,6 +66,7 @@ const normalizeKey = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
 export function McodeProviderForm({
+  appId,
   providerId,
   initialData,
   onSubmit,
@@ -80,6 +77,11 @@ export function McodeProviderForm({
   onSubmitReadyChange,
 }: ProviderFormProps) {
   const { t } = useTranslation();
+  const presets = appId === "dsh" ? dshProviderPresets : mcodeProviderPresets;
+  const presetEntries = presets.map((preset, index) => ({
+    id: String(index),
+    preset,
+  }));
   const isDarkMode = useDarkMode();
   const [config, setConfig] = useState<McodeConfig>(
     initialData?.settingsConfig ?? {
@@ -93,8 +95,7 @@ export function McodeProviderForm({
   const [jsonText, setJsonText] = useState(JSON.stringify(config, null, 2));
   const [jsonValid, setJsonValid] = useState(true);
   const [presetId, setPresetId] = useState("custom");
-  const preset =
-    presetId === "custom" ? undefined : mcodeProviderPresets[Number(presetId)];
+  const preset = presetId === "custom" ? undefined : presets[Number(presetId)];
   const category = initialData?.category ?? preset?.category ?? "custom";
   const [extraOptions, setExtraOptions] = useState(
     toOpencodeExtraOptions(config.options ?? {}),
@@ -105,7 +106,7 @@ export function McodeProviderForm({
   // references embed it, so it is fixed once the provider exists.
   const isEdit = Boolean(initialData);
   const [providerKey, setProviderKey] = useState(providerId ?? "");
-  const { data: existing } = useProvidersQuery("mcode");
+  const { data: existing } = useProvidersQuery(appId);
   const keyTaken =
     !isEdit &&
     Object.prototype.hasOwnProperty.call(
@@ -130,7 +131,8 @@ export function McodeProviderForm({
       name.trim() &&
       (isEdit || (providerKey && !keyInvalid && !keyTaken)) &&
       config.options?.baseURL?.trim() &&
-      config.options?.apiKey?.trim() &&
+      (config.options?.apiKey?.trim() ||
+        (appId === "dsh" && config.apiKeyEnv)) &&
       Object.keys(config.models ?? {}).length,
   );
   useEffect(() => {
@@ -145,8 +147,7 @@ export function McodeProviderForm({
     update({ ...config, options: { ...config.options, ...next } });
   const choosePreset = (id: string) => {
     setPresetId(id);
-    const selected =
-      id === "custom" ? undefined : mcodeProviderPresets[Number(id)];
+    const selected = id === "custom" ? undefined : presets[Number(id)];
     const next = selected?.settingsConfig ?? {
       kind: "custom",
       enabled: true,
@@ -170,7 +171,7 @@ export function McodeProviderForm({
     <Form {...form}>
       <form
         id="provider-form"
-        className="space-y-6 glass rounded-xl p-6 border border-white/10"
+        className="space-y-6"
         onSubmit={form.handleSubmit(async (identity) => {
           if (!ready || busy) return;
           setBusy(true);
@@ -207,7 +208,7 @@ export function McodeProviderForm({
         {!initialData && (
           <ProviderPresetSelector
             selectedPresetId={presetId}
-            presetEntries={PRESET_ENTRIES}
+            presetEntries={presetEntries}
             presetCategoryLabels={{
               custom: t("providerPreset.custom"),
               cn_official: t("providerForm.categoryCnOfficial"),
@@ -252,7 +253,7 @@ export function McodeProviderForm({
                   className={
                     keyTaken || keyInvalid
                       ? "text-xs text-destructive"
-                      : "text-xs text-muted-foreground"
+                      : "text-xs text-fg-2"
                   }
                 >
                   {keyTaken
@@ -287,23 +288,10 @@ export function McodeProviderForm({
             extraOptions={extraOptions}
             onExtraOptionsChange={(draft) => {
               setExtraOptions(draft);
-              const options = Object.fromEntries(
-                Object.entries(config.options ?? {}).filter(([key]) =>
-                  isKnownOpencodeOptionKey(key),
-                ),
-              );
-              for (const [key, value] of Object.entries(draft)) {
-                if (
-                  !key.trim() ||
-                  key.startsWith(OPENCODE_EXTRA_OPTION_DRAFT_PREFIX)
-                )
-                  continue;
-                try {
-                  options[key.trim()] = JSON.parse(value);
-                } catch {
-                  options[key.trim()] = value;
-                }
-              }
+              const options: OpenCodeProviderOptions = {
+                ...(config.options ?? {}),
+              };
+              mergeOpencodeExtraOptionRows(options, draft);
               update({ ...config, options });
             }}
           />

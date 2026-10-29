@@ -126,4 +126,4 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 - [VV Code 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
 - [VV Code 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
 - [VV Code v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
-- 功能来自上游社区贡献 [CC Switch #5071](https://github.com/farion1231/cc-switch/pull/5071)，感谢 @yeeyzy
+- 功能来自上游社区贡献 [VV Code #5071](https://github.com/PiuQiuPiaQia/api-switch/pull/5071)，感谢 @yeeyzy

@@ -1,6 +1,6 @@
 mod support;
 
-use cc_switch_lib::{update_settings, AppSettings, AppType, Prompt, PromptService};
+use vv_code_lib::{update_settings, AppSettings, AppType, Prompt, PromptService};
 use std::fs;
 use support::{create_test_state, ensure_test_home, reset_test_fs, test_mutex};
 
@@ -192,4 +192,36 @@ fn saving_inactive_prompts_keeps_a_hand_written_file_until_the_last_enabled_one_
 
     update_settings(AppSettings::default()).unwrap();
     let _ = fs::remove_dir_all(&hermes_dir);
+}
+
+#[test]
+fn omp_prompts_write_agents_md_in_the_agent_directory() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let agent_dir = home.join("custom-omp/agent");
+    update_settings(AppSettings {
+        omp_config_dir: Some(agent_dir.to_string_lossy().into_owned()),
+        ..AppSettings::default()
+    })
+    .unwrap();
+    let state = create_test_state().unwrap();
+
+    let prompt = Prompt {
+        id: "global".into(),
+        name: "Global".into(),
+        content: "Use the project conventions.".into(),
+        description: None,
+        enabled: false,
+        created_at: None,
+        updated_at: None,
+    };
+    PromptService::upsert_prompt(&state, AppType::Omp, "global", prompt).unwrap();
+    PromptService::enable_prompt(&state, AppType::Omp, "global").unwrap();
+    assert_eq!(
+        fs::read_to_string(agent_dir.join("AGENTS.md")).unwrap(),
+        "Use the project conventions."
+    );
+
+    update_settings(AppSettings::default()).unwrap();
 }

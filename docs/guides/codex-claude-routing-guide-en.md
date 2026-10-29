@@ -126,4 +126,4 @@ Before using this in the "company bans the client but keeps only the gateway" sc
 - [VV Code User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
 - [VV Code User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
 - [VV Code v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
-- This feature comes from upstream community contribution [CC Switch #5071](https://github.com/farion1231/cc-switch/pull/5071); thanks @yeeyzy.
+- This feature comes from upstream community contribution [VV Code #5071](https://github.com/PiuQiuPiaQia/api-switch/pull/5071); thanks @yeeyzy.

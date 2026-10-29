@@ -12,10 +12,10 @@ English · [中文](README_ZH.md) · [日本語](README_JA.md) · [Deutsch](READ
 
 ## Features
 
-- Manage providers for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes.
+- Manage providers for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes, Pi, MiniMax Code, Kimi Code, and Oh My Pi.
 - Switch providers from the app or system tray.
 - Manage MCP servers, prompts, and skills across supported tools.
-- Use local proxy routing, failover, usage tracking, and session management.
+- Use local proxy routing, failover, aggregation, usage tracking, and session management.
 - Store data locally with backup, import/export, and optional sync support.
 
 ## Download
