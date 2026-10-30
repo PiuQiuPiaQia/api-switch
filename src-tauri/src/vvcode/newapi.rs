@@ -1257,6 +1257,11 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     wrapper.id = "vvcode-login-hint";
     wrapper.style.cssText = CARD_STYLE;
 
+    var guidance = document.createElement("span");
+    guidance.style.cssText = "color:#e9d5ff;font-weight:500;max-width:420px";
+    guidance.textContent = "如果使用 GitHub 登录，仍需要 NewAPI 本地密码完成安全验证；这不是 GitHub 密码。若尚未设置，请先在账号安全设置中设置密码。";
+    wrapper.appendChild(guidance);
+
     if (notice) {
       var noticeLine = document.createElement("span");
       noticeLine.style.cssText = "color:#fde68a;font-weight:600;max-width:360px";
@@ -1266,12 +1271,12 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
 
     var label = document.createElement("span");
     label.style.cssText = "color:#fff;font-weight:600;white-space:nowrap";
-    label.textContent = notice ? "重新输入密码" : "自动创建访问令牌：请输入账号密码";
+    label.textContent = notice ? "重新输入 NewAPI 本地密码" : "自动创建访问令牌：请输入 NewAPI 本地密码";
 
     var input = document.createElement("input");
     input.type = "password";
     input.autocomplete = "current-password";
-    input.placeholder = "账号密码";
+    input.placeholder = "NewAPI 本地密码";
     input.style.cssText = INPUT_STYLE;
 
     var confirm = document.createElement("button");
@@ -1300,7 +1305,7 @@ const PAT_LOGIN_SCRIPT: &str = r#"(function () {
     skip.onclick = function () {
       wrapper.remove();
       hint(
-        "请在「访问令牌」里手动创建：勾选 Profile 的查看和 API keys 的查看/创建/查看完整密钥，有效期选永不过期。",
+        "请先确认账号已设置 NewAPI 本地密码（GitHub 密码不适用），再在「访问令牌」里手动创建：勾选 Profile 的查看和 API keys 的查看/创建/查看完整密钥，有效期选永不过期。",
         true
       );
     };
