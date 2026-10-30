@@ -140,9 +140,9 @@ fn replace_patch(
 }
 
 /// Same `<file>.lock` exclusive-create protocol and PID record as dsh-atomic-write.
-struct FileLock(PathBuf);
+pub(crate) struct FileLock(PathBuf);
 impl FileLock {
-    fn acquire(path: &Path) -> Result<Self, AppError> {
+    pub(crate) fn acquire(path: &Path) -> Result<Self, AppError> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| AppError::io(parent, error))?;
         }
@@ -239,7 +239,9 @@ fn provider_entry(text: &str) -> Result<Yaml, AppError> {
     Ok(entry)
 }
 
-fn credential_document(path: &Path) -> Result<Yaml, AppError> {
+/// The version-1 credential document layout shared by every writer; kept
+/// `pub(crate)` so all profile writers validate it the same way.
+pub(crate) fn credential_document(path: &Path) -> Result<Yaml, AppError> {
     let text = read_text(path)?;
     if text.trim().is_empty() {
         return Ok(serde_yaml::to_value(json!({"version":1,"refs":{},"records":{}})).unwrap());

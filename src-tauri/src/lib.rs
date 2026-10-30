@@ -1549,6 +1549,8 @@ pub fn run() {
             commands::remove_provider_from_live_config,
             commands::switch_provider,
             vvcode::restore_official_configuration,
+            vvcode::vvcode_dsh_apply_managed,
+            vvcode::vvcode_dsh_get_managed_status,
             commands::get_init_error,
             commands::open_app_config_folder,
             commands::reveal_app_log_file,

@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DshManagedStatus,
   NewApiBootstrap,
   NewApiEndpointProbe,
   NewApiInfoRoute,
   NewApiSession,
 } from "./types";
 import type { AppId } from "@/lib/api/types";
+import type { Provider } from "@/types";
 
 export const newApiApi = {
   async beginPatLogin(serverUrl: string): Promise<NewApiSession> {
@@ -53,5 +55,20 @@ export const newApiApi = {
     timeoutSecs: number = 6,
   ): Promise<NewApiEndpointProbe[]> {
     return await invoke("test_api_endpoints", { urls, timeoutSecs });
+  },
+};
+
+/**
+ * Dsh managed-provider backend. Profiles live in ~/.dsh and only the Rust
+ * side may write them (multi-profile, desktop conflicts, credentials), so
+ * the form must use these commands instead of providersApi add/switch.
+ */
+export const dshApi = {
+  async applyManagedProvider(provider: Provider): Promise<DshManagedStatus> {
+    return await invoke("vvcode_dsh_apply_managed", { provider });
+  },
+
+  async getManagedStatus(): Promise<DshManagedStatus> {
+    return await invoke("vvcode_dsh_get_managed_status");
   },
 };

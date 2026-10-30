@@ -5,12 +5,14 @@
 //! root that registers the product commands and runtime policy.
 
 pub(crate) mod brand;
+pub(crate) mod dsh_managed;
 pub(crate) mod edition;
 mod newapi;
 mod restore;
 pub(crate) mod tray;
 pub(crate) mod updater;
 
+pub use dsh_managed::*;
 pub use newapi::*;
 pub use restore::*;
 pub use updater::*;

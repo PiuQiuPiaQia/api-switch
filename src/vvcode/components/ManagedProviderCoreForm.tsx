@@ -17,11 +17,12 @@ import { BRAND_CONFIG } from "../brand";
 import {
   applyClaudeCoreModelRoutes,
   applyAgentModelCatalog,
+  applyDshManagedSettings,
   applyManagedDefaultModel,
   resolveGroupConnection,
   type ClaudeCoreModelRoutes,
 } from "../configuration";
-import type { NewApiGroup, ProductScenario } from "../types";
+import type { DshApiProtocol, NewApiGroup, ProductScenario } from "../types";
 
 interface ManagedProviderCoreFormProps {
   formId: string;
@@ -37,6 +38,33 @@ interface AgentModelRow {
   rowId: string;
   id: string;
   name: string;
+}
+
+interface DshModelRow {
+  rowId: string;
+  id: string;
+  name: string;
+  context: string;
+  output: string;
+}
+
+const DSH_PROTOCOL_OPTIONS: Array<{
+  value: DshApiProtocol;
+  label: string;
+}> = [
+  { value: "openai-completions", label: "OpenAI Chat Completions" },
+  { value: "openai-responses", label: "OpenAI Responses" },
+  { value: "anthropic-messages", label: "Anthropic Messages" },
+];
+
+function isDshProtocol(value: unknown): value is DshApiProtocol {
+  return DSH_PROTOCOL_OPTIONS.some((option) => option.value === value);
+}
+
+function limitToText(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? String(Math.floor(value))
+    : "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -63,7 +91,32 @@ function defaultModelFromProvider(
   if (scenario.id === "gemini") {
     return exactEnvValue(provider, "GEMINI_MODEL");
   }
+  if (scenario.id === "dsh") {
+    return typeof settingsConfig.defaultModel === "string"
+      ? settingsConfig.defaultModel.trim()
+      : "";
+  }
   return "";
+}
+
+function dshApiFromProvider(provider: Provider): string {
+  const api = asRecord(provider.settingsConfig).api;
+  return isDshProtocol(api) ? api : "";
+}
+
+function dshRowsFromProvider(provider: Provider): DshModelRow[] {
+  const models = asRecord(asRecord(provider.settingsConfig).models);
+  return Object.entries(models).map(([id, value], index) => {
+    const model = asRecord(value);
+    const limit = asRecord(model.limit);
+    return {
+      rowId: `existing-${index}-${id}`,
+      id,
+      name: typeof model.name === "string" ? model.name : id,
+      context: limitToText(limit.context),
+      output: limitToText(limit.output),
+    };
+  });
 }
 
 function agentRowsFromProvider(
@@ -123,6 +176,12 @@ export function ManagedProviderCoreForm({
   const [agentModels, setAgentModels] = useState<AgentModelRow[]>(() =>
     agentRowsFromProvider(scenario, provider),
   );
+  const [dshApiValue, setDshApiValue] = useState(() =>
+    dshApiFromProvider(provider),
+  );
+  const [dshModels, setDshModels] = useState<DshModelRow[]>(() =>
+    dshRowsFromProvider(provider),
+  );
   const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
 
@@ -164,6 +223,27 @@ export function ManagedProviderCoreForm({
       next = applyClaudeCoreModelRoutes(provider, claudeRoutes);
     } else if (scenario.id === "codex" || scenario.id === "gemini") {
       next = applyManagedDefaultModel(scenario, provider, defaultModel);
+    } else if (scenario.id === "dsh") {
+      if (!dshApiValue) {
+        toast.error("请先选择模型协议");
+        return;
+      }
+      try {
+        next = applyDshManagedSettings(
+          provider,
+          dshApiValue,
+          dshModels.map(({ id, name, context, output }) => ({
+            id,
+            name,
+            context,
+            output,
+          })),
+          defaultModel,
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+        return;
+      }
     } else if (
       scenario.id === "opencode" ||
       scenario.id === "openclaw" ||
@@ -199,6 +279,38 @@ export function ManagedProviderCoreForm({
     setAgentModels((current) => current.filter((item) => item.rowId !== rowId));
   };
 
+  const updateDshModel = (
+    rowId: string,
+    field: keyof Omit<DshModelRow, "rowId">,
+    value: string,
+  ) => {
+    setDshModels((current) =>
+      current.map((row) =>
+        row.rowId === rowId ? { ...row, [field]: value } : row,
+      ),
+    );
+  };
+
+  const addDshModel = () => {
+    const row: DshModelRow = {
+      rowId: `new-${crypto.randomUUID()}`,
+      id: "",
+      name: "",
+      context: "",
+      output: "",
+    };
+    setDshModels((current) => [...current, row]);
+  };
+
+  const removeDshModel = (rowId: string) => {
+    setDshModels((current) => current.filter((item) => item.rowId !== rowId));
+  };
+
+  const addDshModelOrAgentModel = () => {
+    if (scenario.id === "dsh") addDshModel();
+    else addAgentModel();
+  };
+
   return (
     <form id={formId} className="vv-core-provider-form" onSubmit={handleSubmit}>
       <div className="vv-core-routes">
@@ -229,8 +341,9 @@ export function ManagedProviderCoreForm({
             )}
             {(scenario.id === "opencode" ||
               scenario.id === "openclaw" ||
-              scenario.id === "hermes") && (
-              <button type="button" onClick={addAgentModel}>
+              scenario.id === "hermes" ||
+              scenario.id === "dsh") && (
+              <button type="button" onClick={addDshModelOrAgentModel}>
                 <Plus size={14} /> 添加模型
               </button>
             )}
@@ -267,6 +380,43 @@ export function ManagedProviderCoreForm({
           <p className="vv-core-model-order-hint">
             配置后请重启 Claude Desktop。
           </p>
+        )}
+
+        {scenario.id === "dsh" && (
+          <div className="vv-core-dsh-basics">
+            <label className="vv-core-default-model">
+              <span>模型协议</span>
+              <select
+                className={`vv-core-dsh-protocol__select ${dshApiValue ? "" : "is-empty"}`}
+                value={dshApiValue}
+                onChange={(event) => setDshApiValue(event.target.value)}
+                aria-label="Dsh 模型协议"
+              >
+                <option value="">选择协议（必选）</option>
+                {DSH_PROTOCOL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="vv-core-default-model">
+              <span>默认模型</span>
+              <div className="vv-core-model-control">
+                <ModelInputWithFetch
+                  id={`${formId}-dsh-default-model`}
+                  value={defaultModel}
+                  onChange={setDefaultModel}
+                  placeholder="留空则不设置"
+                  fetchedModels={fetchedModels}
+                  isLoading={isFetchingModels}
+                />
+              </div>
+            </label>
+            <p className="vv-core-model-order-hint">
+              站点分组未提供模型协议，请按中转站实际接口选择。单个托管供应商仅使用一种协议，所有模型经同一协议接入。
+            </p>
+          </div>
         )}
 
         {(scenario.id === "codex" || scenario.id === "gemini") && (
@@ -364,6 +514,85 @@ export function ManagedProviderCoreForm({
                   {scenario.id === "openclaw" ? "回退模型" : "备选模型"}。
                 </p>
               )}
+          </div>
+        )}
+
+        {scenario.id === "dsh" && (
+          <div className="vv-core-opencode-models vv-core-dsh-models">
+            <div className="vv-core-model-list-heading vv-core-dsh-models__heading">
+              <span>模型 ID</span>
+              <span>显示名称（可选）</span>
+              <span>上下文上限（可选）</span>
+              <span>输出上限（可选）</span>
+            </div>
+            {dshModels.length === 0 ? (
+              <p className="vv-core-empty-models">
+                暂无模型配置。点击“添加模型”来配置可用模型。
+              </p>
+            ) : (
+              dshModels.map((row) => (
+                <div key={row.rowId} className="vv-core-dsh-model-row">
+                  <div className="vv-core-opencode-model-id">
+                    <input
+                      value={row.id}
+                      onChange={(event) =>
+                        updateDshModel(row.rowId, "id", event.target.value)
+                      }
+                      placeholder="模型 ID"
+                      autoComplete="off"
+                    />
+                    {fetchedModels.length > 0 && (
+                      <ModelDropdown
+                        models={fetchedModels}
+                        onSelect={(id) => updateDshModel(row.rowId, "id", id)}
+                      />
+                    )}
+                  </div>
+                  <input
+                    value={row.name}
+                    onChange={(event) =>
+                      updateDshModel(row.rowId, "name", event.target.value)
+                    }
+                    placeholder="显示名称（可选）"
+                    autoComplete="off"
+                  />
+                  <input
+                    className="vv-core-dsh-limit-input"
+                    value={row.context}
+                    onChange={(event) =>
+                      updateDshModel(row.rowId, "context", event.target.value)
+                    }
+                    placeholder="如 128000"
+                    inputMode="numeric"
+                    autoComplete="off"
+                  />
+                  <input
+                    className="vv-core-dsh-limit-input"
+                    value={row.output}
+                    onChange={(event) =>
+                      updateDshModel(row.rowId, "output", event.target.value)
+                    }
+                    placeholder="如 8192"
+                    inputMode="numeric"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="vv-core-opencode-remove"
+                    aria-label={`删除模型 ${row.id || "空白"}`}
+                    onClick={() => removeDshModel(row.rowId)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))
+            )}
+            {dshModels.length > 0 && (
+              <p className="vv-core-model-order-hint">
+                上下文/输出上限填有效正数后写入；输出上限会按 Dsh
+                压缩预算自动下调，避免厂商数值占满整个上下文窗口。
+              </p>
+            )}
           </div>
         )}
       </div>

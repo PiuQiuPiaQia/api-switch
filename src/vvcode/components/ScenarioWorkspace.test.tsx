@@ -18,6 +18,8 @@ const apiMocks = vi.hoisted(() => ({
   refreshEnvironment: vi.fn(),
   ensureTokens: vi.fn(),
   restoreOfficialConfiguration: vi.fn(),
+  dshApplyManaged: vi.fn(),
+  dshGetStatus: vi.fn(),
 }));
 
 vi.mock("@/lib/api/providers", () => ({
@@ -34,6 +36,10 @@ vi.mock("@/lib/api/settings", () => ({
 vi.mock("../api", () => ({
   newApiApi: {
     restoreOfficialConfiguration: apiMocks.restoreOfficialConfiguration,
+  },
+  dshApi: {
+    applyManagedProvider: apiMocks.dshApplyManaged,
+    getManagedStatus: apiMocks.dshGetStatus,
   },
 }));
 
@@ -138,23 +144,31 @@ function AutoProvisionHarness({
   );
 }
 
-describe("ScenarioWorkspace", () => {
-  beforeEach(() => {
-    apiMocks.ensureTokens.mockReset();
-    apiMocks.getProviders.mockReset();
-    apiMocks.getProviders.mockResolvedValue({});
-    apiMocks.getToolVersions.mockReset();
-    apiMocks.runToolLifecycleAction.mockReset();
-    apiMocks.checkForUpdates.mockReset();
-    apiMocks.checkForUpdates.mockResolvedValue(installedToolInfo);
-    apiMocks.refreshEnvironment.mockReset();
-    apiMocks.refreshEnvironment.mockResolvedValue({
-      info: installedToolInfo,
-    });
-    apiMocks.restoreOfficialConfiguration.mockReset();
-    apiMocks.restoreOfficialConfiguration.mockResolvedValue(undefined);
+beforeEach(() => {
+  apiMocks.ensureTokens.mockReset();
+  apiMocks.getProviders.mockReset();
+  apiMocks.getProviders.mockResolvedValue({});
+  apiMocks.getToolVersions.mockReset();
+  apiMocks.runToolLifecycleAction.mockReset();
+  apiMocks.checkForUpdates.mockReset();
+  apiMocks.checkForUpdates.mockResolvedValue(installedToolInfo);
+  apiMocks.refreshEnvironment.mockReset();
+  apiMocks.refreshEnvironment.mockResolvedValue({
+    info: installedToolInfo,
   });
+  apiMocks.restoreOfficialConfiguration.mockReset();
+  apiMocks.restoreOfficialConfiguration.mockResolvedValue(undefined);
+  apiMocks.dshApplyManaged.mockReset();
+  apiMocks.dshGetStatus.mockReset();
+  apiMocks.dshGetStatus.mockResolvedValue({
+    profileNames: [],
+    conflicts: [],
+    warnings: [],
+    managed: false,
+  });
+});
 
+describe("ScenarioWorkspace", () => {
   it("automatically provisions a missing group key and enables configuration", async () => {
     render(<AutoProvisionHarness />);
 
@@ -527,5 +541,163 @@ describe("ScenarioWorkspace", () => {
       ),
     );
     expect(apiMocks.ensureTokens).not.toHaveBeenCalled();
+  });
+});
+
+describe("ScenarioWorkspace · Dsh", () => {
+  it("allows an official desktop installation without requiring the CLI", async () => {
+    apiMocks.dshGetStatus.mockResolvedValue({
+      profileNames: [], conflicts: [], warnings: [], managed: false,
+      desktopAvailable: true,
+    });
+    render(
+      <ScenarioWorkspace
+        scenario={PRODUCT.scenarios.find((item) => item.id === "dsh")!}
+        bootstrap={bootstrapWithKey}
+        preview={false}
+        environment={{
+          info: { ...installedToolInfo, name: "dsh", version: null },
+          loading: false, error: null,
+        }}
+        onCheckForUpdates={apiMocks.checkForUpdates}
+        onRefreshEnvironment={apiMocks.refreshEnvironment}
+        onEnsureTokens={apiMocks.ensureTokens}
+      />,
+    );
+    expect(await screen.findByLabelText("Dsh 模型协议")).toBeInTheDocument();
+    expect(screen.getByText("桌面端已安装")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "初始化环境" })).not.toBeInTheDocument();
+    expect(apiMocks.dshGetStatus).toHaveBeenCalledOnce();
+  });
+
+  it("applies the managed provider through the dedicated backend command", async () => {
+    apiMocks.dshApplyManaged.mockResolvedValue({
+      profileNames: ["default"],
+      conflicts: [],
+      warnings: [],
+      managed: true,
+    });
+
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        scenarioId="dsh"
+      />,
+    );
+
+    const protocolSelect = (await screen.findByLabelText(
+      "Dsh 模型协议",
+    )) as HTMLSelectElement;
+    expect(protocolSelect).toHaveValue("");
+    fireEvent.change(protocolSelect, {
+      target: { value: "openai-responses" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "应用配置" }));
+
+    await waitFor(() =>
+      expect(apiMocks.dshApplyManaged).toHaveBeenCalledOnce(),
+    );
+    const provider = apiMocks.dshApplyManaged.mock.calls[0][0];
+    expect(provider.id).toBe(PRODUCT.managedProviderId);
+    expect(provider.settingsConfig.api).toBe("openai-responses");
+    // The generic providers add/switch path never runs for Dsh.
+    expect(apiMocks.getProviders).toHaveBeenCalledWith("dsh");
+    expect(Object.keys(apiMocks.getProviders.mock.results[0].value)).toEqual(
+      [],
+    );
+    expect(await screen.findByText("Dsh 托管配置已就绪")).toBeInTheDocument();
+    expect(screen.getByText(/default/)).toBeInTheDocument();
+  });
+
+  it("surfaces configuration drift with an explicit reapply action", async () => {
+    apiMocks.dshApplyManaged
+      .mockResolvedValueOnce({
+        profileNames: ["default"],
+        conflicts: ["profile default 的托管条目已被本机修改"],
+        warnings: [],
+        managed: true,
+      })
+      .mockResolvedValueOnce({
+        profileNames: ["default"],
+        conflicts: [],
+        warnings: [],
+        managed: true,
+      });
+
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        scenarioId="dsh"
+      />,
+    );
+
+    // Apply through the form; the backend reports drift in the same status.
+    fireEvent.change(await screen.findByLabelText("Dsh 模型协议"), {
+      target: { value: "anthropic-messages" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "应用配置" }));
+
+    await waitFor(() =>
+      expect(apiMocks.dshApplyManaged).toHaveBeenCalledOnce(),
+    );
+    expect(
+      await screen.findByText("本机 Dsh 配置与托管配置不一致"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("profile default 的托管条目已被本机修改"),
+    ).toBeInTheDocument();
+
+    // Drift is repaired explicitly, never rewritten in the background.
+    fireEvent.click(screen.getByRole("button", { name: "重新应用托管配置" }));
+
+    await waitFor(() =>
+      expect(apiMocks.dshApplyManaged).toHaveBeenCalledTimes(2),
+    );
+    expect(await screen.findByText("Dsh 托管配置已就绪")).toBeInTheDocument();
+  });
+
+  it("refreshes the status once after restoring the official configuration", async () => {
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        scenarioId="dsh"
+      />,
+    );
+
+    // Mount refresh only — no polling while the page sits idle.
+    await waitFor(() => expect(apiMocks.dshGetStatus).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "恢复官方默认配置" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.restoreOfficialConfiguration).toHaveBeenCalledWith("dsh"),
+    );
+    await waitFor(() => expect(apiMocks.dshGetStatus).toHaveBeenCalledTimes(2));
+    expect(apiMocks.dshApplyManaged).not.toHaveBeenCalled();
+  });
+
+  it("shows an error state when the status backend fails", async () => {
+    apiMocks.dshGetStatus.mockRejectedValue(new Error("后端不可用"));
+
+    render(
+      <AutoProvisionHarness
+        initialBootstrap={bootstrapWithKey}
+        scenarioId="dsh"
+      />,
+    );
+
+    expect(await screen.findByText("Dsh 配置状态读取失败")).toBeInTheDocument();
+    expect(screen.getByText("后端不可用")).toBeInTheDocument();
+
+    apiMocks.dshGetStatus.mockResolvedValue({
+      profileNames: [],
+      conflicts: [],
+      warnings: [],
+      managed: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(apiMocks.dshGetStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Dsh 配置状态读取失败")).not.toBeInTheDocument();
   });
 });

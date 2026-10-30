@@ -90,6 +90,17 @@ export const PRODUCT = {
       accent: "#0f9f8f",
       icon: "hermes",
     },
+    {
+      id: "dsh",
+      appId: "dsh",
+      groupAppId: "dsh",
+      tool: "dsh",
+      name: "Dsh（CLI / 官方桌面）",
+      shortName: "Dsh",
+      description: "DeepSeek Harness：在终端或官方桌面端运行编码智能体",
+      accent: "#4d6bfe",
+      icon: "deepseek",
+    },
   ] satisfies ProductScenario[],
 } as const;
 

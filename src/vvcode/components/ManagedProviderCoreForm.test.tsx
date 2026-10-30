@@ -27,7 +27,7 @@ const group: NewApiGroup = {
   models: [],
 };
 
-function scenario(id: "claude" | "codex" | "openclaw" | "hermes") {
+function scenario(id: "claude" | "codex" | "openclaw" | "hermes" | "dsh") {
   return PRODUCT.scenarios.find((item) => item.id === id)!;
 }
 
@@ -193,4 +193,148 @@ describe("ManagedProviderCoreForm", () => {
       ]);
     },
   );
+});
+
+describe("ManagedProviderCoreForm · Dsh", () => {
+  beforeEach(() => {
+    modelFetchMock.fetchModelsForConfig.mockReset();
+    modelFetchMock.showFetchModelsError.mockReset();
+  });
+
+  it("requires an explicit protocol before applying the Dsh configuration", async () => {
+    const dshScenario = scenario("dsh");
+    const onSubmit = vi.fn();
+
+    render(
+      <>
+        <ManagedProviderCoreForm
+          formId="managed-dsh"
+          scenario={dshScenario}
+          group={group}
+          provider={buildManagedProvider(dshScenario, group)}
+          hasApiKey
+          onSubmit={onSubmit}
+        />
+        <button type="submit" form="managed-dsh">
+          应用 Dsh
+        </button>
+      </>,
+    );
+
+    const protocolSelect = screen.getByLabelText(
+      "Dsh 模型协议",
+    ) as HTMLSelectElement;
+    expect(protocolSelect).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "应用 Dsh" }));
+
+    // The form refuses to submit a protocol-less Dsh provider.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(protocolSelect).toHaveValue("");
+  });
+
+  it("restores the saved protocol and models, then submits protected limits and the default model", async () => {
+    const dshScenario = scenario("dsh");
+    const onSubmit = vi.fn();
+    const provider = buildManagedProvider(dshScenario, group);
+    provider.settingsConfig.api = "anthropic-messages";
+    provider.settingsConfig.models = {
+      "claude-sonnet": {
+        name: "Sonnet",
+        limit: { context: 200_000, output: 64_000 },
+      },
+    };
+    provider.settingsConfig.defaultModel = "claude-sonnet";
+
+    render(
+      <>
+        <ManagedProviderCoreForm
+          formId="managed-dsh-2"
+          scenario={dshScenario}
+          group={group}
+          provider={provider}
+          hasApiKey
+          onSubmit={onSubmit}
+        />
+        <button type="submit" form="managed-dsh-2">
+          应用 Dsh
+        </button>
+      </>,
+    );
+
+    // The saved choice initializes the selector instead of a guessed default.
+    expect(screen.getByLabelText("Dsh 模型协议")).toHaveValue(
+      "anthropic-messages",
+    );
+    // The model id input and the default model input both carry the value.
+    expect(
+      screen.getAllByDisplayValue("claude-sonnet").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByDisplayValue("Sonnet")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("200000")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("64000")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("留空则不设置")).toHaveValue(
+      "claude-sonnet",
+    );
+
+    // Switch to OpenAI Responses and add a second model with a
+    // window-eating output limit.
+    fireEvent.change(screen.getByLabelText("Dsh 模型协议"), {
+      target: { value: "openai-responses" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
+    const idInputs = screen
+      .getAllByPlaceholderText("模型 ID")
+      .filter((input) => (input as HTMLInputElement).value === "");
+    fireEvent.change(idInputs[0], { target: { value: "gpt-5.4" } });
+    fireEvent.change(idInputs[0].parentElement!.nextElementSibling!, {
+      target: { value: "GPT" },
+    });
+    const contextInputs = screen.getAllByPlaceholderText("如 128000");
+    fireEvent.change(contextInputs[contextInputs.length - 1], {
+      target: { value: "131072" },
+    });
+    const outputInputs = screen.getAllByPlaceholderText("如 8192");
+    fireEvent.change(outputInputs[outputInputs.length - 1], {
+      target: { value: "65536" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "应用 Dsh" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    const submitted = onSubmit.mock.calls[0][0] as Provider;
+    expect(submitted.settingsConfig.api).toBe("openai-responses");
+    // The output limit is protected to max(131072/4, 131072/2 - 65536)=32768.
+    expect(submitted.settingsConfig.models).toEqual({
+      "claude-sonnet": {
+        name: "Sonnet",
+        limit: { context: 200_000, output: 50_000 },
+      },
+      "gpt-5.4": { name: "GPT", limit: { context: 131072, output: 32768 } },
+    });
+    expect(submitted.settingsConfig.defaultModel).toBe("claude-sonnet");
+    expect(submitted.meta?.apiFormat).toBe("openai_responses");
+  });
+
+  it("fetches models for the resolved Dsh connection when a protocol is chosen", async () => {
+    const dshScenario = scenario("dsh");
+    modelFetchMock.fetchModelsForConfig.mockResolvedValue([
+      { id: "deepseek-v4" },
+    ]);
+
+    render(
+      <ManagedProviderCoreForm
+        formId="managed-dsh-3"
+        scenario={dshScenario}
+        group={group}
+        provider={buildManagedProvider(dshScenario, group)}
+        hasApiKey
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
+    await waitFor(() =>
+      expect(modelFetchMock.fetchModelsForConfig).toHaveBeenCalledOnce(),
+    );
+  });
 });

@@ -186,4 +186,42 @@ describe("scenario connection resolution", () => {
     expect(connection.apiFormat).toBe("openai_chat");
     expect(connection.baseUrl).toBe("https://vvcode.top/v1");
   });
+
+  it("leaves the Dsh protocol unset instead of guessing from the group", () => {
+    // The website group API only exposes ratio/description; nothing states a
+    // protocol, and Dsh must not silently default every group to Chat.
+    const connection = resolveGroupConnection(scenario("dsh"), group);
+    expect(connection.apiFormat).toBeUndefined();
+    expect(connection.baseUrl).toBe("https://vvcode.top");
+  });
+
+  it("keeps an explicit Dsh protocol and applies its conventional path", () => {
+    const dshGroup: NewApiGroup = {
+      ...group,
+      connections: {
+        dsh: {
+          baseUrl: "https://vvcode.top",
+          apiKey: "sk-dsh",
+          apiFormat: "openai_responses",
+        },
+      },
+    };
+    const explicit = resolveGroupConnection(scenario("dsh"), dshGroup);
+    expect(explicit.apiFormat).toBe("openai_responses");
+    expect(explicit.baseUrl).toBe("https://vvcode.top/v1");
+
+    const anthropicGroup: NewApiGroup = {
+      ...group,
+      connections: {
+        dsh: {
+          baseUrl: "https://vvcode.top",
+          apiKey: "sk-dsh",
+          apiFormat: "anthropic",
+        },
+      },
+    };
+    const anthropic = resolveGroupConnection(scenario("dsh"), anthropicGroup);
+    expect(anthropic.apiFormat).toBe("anthropic");
+    expect(anthropic.baseUrl).toBe("https://vvcode.top");
+  });
 });

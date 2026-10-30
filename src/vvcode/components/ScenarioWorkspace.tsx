@@ -5,6 +5,7 @@ import {
   ArrowUpCircle,
   Check,
   ChevronsUpDown,
+  CircleDashed,
   CircleDollarSign,
   Download,
   Loader2,
@@ -32,14 +33,17 @@ import { providersApi } from "@/lib/api/providers";
 import { settingsApi } from "@/lib/api/settings";
 import { isUpdateAvailable } from "@/lib/version";
 import {
+  applyDshManagedConfiguration,
   applyPreparedManagedConfiguration,
   buildManagedProvider,
+  isDshApiProtocol,
   managedProviderName,
   resolveGroupConnection,
 } from "../configuration";
 import { PRODUCT } from "../config";
-import { newApiApi } from "../api";
+import { dshApi, newApiApi } from "../api";
 import type {
+  DshManagedStatus,
   NewApiBootstrap,
   ProductScenario,
   ToolEnvironmentState,
@@ -75,6 +79,131 @@ interface KeyPreparationState {
 
 type ToolLifecycleAction = "install" | "update";
 type ToolAction = ToolLifecycleAction;
+
+interface DshManagedStatusPanelProps {
+  status: DshManagedStatus | null;
+  loading: boolean;
+  error: string | null;
+  reapplying: boolean;
+  canReapply: boolean;
+  onReapply: () => void;
+  onRefresh: () => void;
+}
+
+/**
+ * Read-only view of the Dsh managed-provider status with an explicit repair
+ * entry: drift is only surfaced here, never overwritten in the background.
+ */
+function DshManagedStatusPanel({
+  status,
+  loading,
+  error,
+  reapplying,
+  canReapply,
+  onReapply,
+  onRefresh,
+}: DshManagedStatusPanelProps) {
+  if (loading && !status) {
+    return (
+      <section className="vv-dsh-status is-loading" aria-live="polite">
+        <Loader2 className="vv-spin" size={15} />
+        <span>正在读取 Dsh 配置状态…</span>
+      </section>
+    );
+  }
+
+  if (error && !status) {
+    return (
+      <section className="vv-dsh-status is-error" aria-live="polite">
+        <AlertTriangle size={15} />
+        <div className="vv-dsh-status__body">
+          <strong>Dsh 配置状态读取失败</strong>
+          <small>{error}</small>
+        </div>
+        <button
+          type="button"
+          className="vv-dsh-status__action"
+          onClick={onRefresh}
+        >
+          重试
+        </button>
+      </section>
+    );
+  }
+
+  if (!status) return null;
+
+  const drift = status.conflicts.length > 0 || status.warnings.length > 0;
+  const profiles = status.profileNames.join("、");
+
+  return (
+    <section
+      className={`vv-dsh-status ${drift ? "is-drift" : status.managed === false ? "is-missing" : "is-ready"}`}
+      aria-live="polite"
+    >
+      {drift ? (
+        <AlertTriangle size={15} />
+      ) : status.managed === false ? (
+        <CircleDashed size={15} />
+      ) : (
+        <Check size={15} />
+      )}
+      <div className="vv-dsh-status__body">
+        <strong>
+          {status.managed === false
+            ? "未检测到本机托管配置"
+            : drift
+              ? "本机 Dsh 配置与托管配置不一致"
+              : "Dsh 托管配置已就绪"}
+        </strong>
+        <small>
+          {status.managed === false
+            ? "应用配置后写入 Dsh profile。"
+            : `已写入 profile：${profiles || "（无）"}`}
+        </small>
+        {status.conflicts.length > 0 && (
+          <ul className="vv-dsh-status__list">
+            {status.conflicts.map((conflict) => (
+              <li key={conflict}>{conflict}</li>
+            ))}
+          </ul>
+        )}
+        {status.warnings.length > 0 && (
+          <ul className="vv-dsh-status__list">
+            {status.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="vv-dsh-status__actions">
+        <button
+          type="button"
+          className="vv-dsh-status__action"
+          onClick={onRefresh}
+          disabled={loading || reapplying}
+        >
+          刷新状态
+        </button>
+        {drift && canReapply && (
+          <button
+            type="button"
+            className="vv-dsh-status__action is-primary"
+            onClick={onReapply}
+            disabled={loading || reapplying}
+          >
+            {reapplying ? (
+              <Loader2 className="vv-spin" size={13} />
+            ) : (
+              <RotateCcw size={13} />
+            )}
+            重新应用托管配置
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function ratioLabel(value: string): string {
   if (!value) return "1×";
@@ -220,6 +349,10 @@ export function ScenarioWorkspace({
   const [providerLoading, setProviderLoading] = useState(!preview);
   const [existingManagedProvider, setExistingManagedProvider] =
     useState<Provider | null>(null);
+  const [dshStatus, setDshStatus] = useState<DshManagedStatus | null>(null);
+  const [dshStatusLoading, setDshStatusLoading] = useState(false);
+  const [dshStatusError, setDshStatusError] = useState<string | null>(null);
+  const [dshReapplying, setDshReapplying] = useState(false);
   const selectionTouchedRef = useRef(Boolean(cachedGroupId));
   const keyProvisionRequestRef = useRef(0);
   const {
@@ -229,7 +362,13 @@ export function ScenarioWorkspace({
   } = environment;
   const hasToolEnvironment = scenario.tool !== null;
   const environmentReady =
-    !hasToolEnvironment || isToolEnvironmentReady(environment);
+    !hasToolEnvironment ||
+    isToolEnvironmentReady(environment) ||
+    (scenario.id === "dsh" && dshStatus?.desktopAvailable === true);
+  const desktopOnly =
+    scenario.id === "dsh" &&
+    dshStatus?.desktopAvailable === true &&
+    !isToolEnvironmentReady(environment);
   const updateAvailable = hasToolEnvironment
     ? isUpdateAvailable(toolInfo?.version, toolInfo?.latest_version)
     : false;
@@ -374,6 +513,31 @@ export function ScenarioWorkspace({
     [bootstrap.groups, selectedGroupId],
   );
 
+  const isDshScenario = scenario.id === "dsh";
+
+  // Dsh status is refreshed on load, after apply, and after restore — never
+  // polled in the background.
+  const refreshDshStatus = useCallback(async () => {
+    if (!isDshScenario || preview) return;
+    setDshStatusLoading(true);
+    try {
+      const nextStatus = await dshApi.getManagedStatus();
+      setDshStatus(nextStatus);
+      setDshStatusError(null);
+    } catch (error) {
+      setDshStatusError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDshStatusLoading(false);
+    }
+  }, [isDshScenario, preview]);
+
+  useEffect(() => {
+    // Desktop can be installed without the CLI. Probe it before applying the
+    // CLI environment gate, otherwise desktop-only installations never open.
+    if (!isDshScenario || preview) return;
+    void refreshDshStatus();
+  }, [isDshScenario, preview, refreshDshStatus]);
+
   const selectedConnection = useMemo(
     () =>
       selectedGroup
@@ -512,6 +676,19 @@ export function ScenarioWorkspace({
     }
     setConfiguring(true);
     try {
+      if (isDshScenario) {
+        // Dsh profiles are written by the dedicated backend only; the
+        // generic providers add/switch path must never touch ~/.dsh.
+        const nextStatus =
+          await applyDshManagedConfiguration(configuredProvider);
+        setDshStatus(nextStatus);
+        setDshStatusError(null);
+        setExistingManagedProvider(configuredProvider);
+        toast.success(
+          `${scenario.name} 托管配置已应用到 ${nextStatus.profileNames.length} 个 profile`,
+        );
+        return;
+      }
       await applyPreparedManagedConfiguration(
         scenario,
         selectedGroup,
@@ -531,6 +708,32 @@ export function ScenarioWorkspace({
     }
   };
 
+  const handleReapplyDsh = async () => {
+    if (!selectedGroup || !managedProvider) return;
+    if (!environmentReady) {
+      toast.error("运行环境尚未就绪，未写入本机配置");
+      return;
+    }
+    if (preview) {
+      toast.info("当前为开发预览模式，不会写入本机配置");
+      return;
+    }
+    setDshReapplying(true);
+    try {
+      const nextStatus = await applyDshManagedConfiguration(managedProvider);
+      setDshStatus(nextStatus);
+      setDshStatusError(null);
+      setExistingManagedProvider(managedProvider);
+      toast.success(`${scenario.name} 托管配置已重新应用`);
+    } catch (error) {
+      toast.error("重新应用 Dsh 托管配置失败", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setDshReapplying(false);
+    }
+  };
+
   const handleRestoreDefaults = async () => {
     if (preview) {
       toast.info("当前为开发预览模式，不会修改本机配置");
@@ -540,6 +743,9 @@ export function ScenarioWorkspace({
     setRestoring(true);
     try {
       await newApiApi.restoreOfficialConfiguration(scenario.appId);
+      if (isDshScenario) {
+        await refreshDshStatus();
+      }
       toast.success(
         scenario.appId === "openclaw" || scenario.appId === "hermes"
           ? `${scenario.name} 已移除 ${PRODUCT.brand.name} 托管配置`
@@ -573,7 +779,9 @@ export function ScenarioWorkspace({
       : toolInfo?.version
         ? `当前版本 ${toolInfo.version}，点击检测更新`
         : `${scenario.name} 尚未初始化，可在下方完成安装`);
-  const currentVersion = toolLoading
+  const currentVersion = desktopOnly
+    ? "桌面端已安装"
+    : toolLoading
     ? "检测中"
     : toolInfo?.version
       ? toolInfo.version
@@ -790,6 +998,26 @@ export function ScenarioWorkspace({
             </section>
           )}
 
+          {isDshScenario && (
+            <DshManagedStatusPanel
+              status={dshStatus}
+              loading={dshStatusLoading}
+              error={dshStatusError}
+              reapplying={dshReapplying}
+              canReapply={Boolean(
+                selectedGroup &&
+                  managedProvider &&
+                  // Reapplying rewrites the persisted managed provider; it is
+                  // only meaningful once a protocol has actually been saved.
+                  isDshApiProtocol(managedProvider.settingsConfig?.api) &&
+                  !providerLoading &&
+                  keyReady,
+              )}
+              onReapply={() => void handleReapplyDsh()}
+              onRefresh={() => void refreshDshStatus()}
+            />
+          )}
+
           <div className="vv-config-actions">
             <button
               type="button"
@@ -829,18 +1057,34 @@ export function ScenarioWorkspace({
           </div>
         </section>
       ) : (
-        <EnvironmentGate
-          scenario={scenario}
-          toolInfo={toolInfo}
-          loading={toolLoading}
-          error={
-            toolError ??
-            (toolInfo?.installed_but_broken ? toolInfo.error : null)
-          }
-          action={toolAction}
-          onDetect={() => void retryEnvironmentCheck()}
-          onInitialize={() => void runToolAction("install")}
-        />
+        <>
+          {isDshScenario && (dshStatusLoading || dshStatusError) && (
+            <DshManagedStatusPanel
+              status={dshStatus}
+              loading={dshStatusLoading}
+              error={dshStatusError}
+              reapplying={false}
+              canReapply={false}
+              onReapply={() => {}}
+              onRefresh={() => void refreshDshStatus()}
+            />
+          )}
+          <EnvironmentGate
+            scenario={scenario}
+            toolInfo={toolInfo}
+            loading={toolLoading}
+            error={
+              toolError ??
+              (toolInfo?.installed_but_broken ? toolInfo.error : null)
+            }
+            action={toolAction}
+            onDetect={() => {
+              void retryEnvironmentCheck();
+              if (isDshScenario) void refreshDshStatus();
+            }}
+            onInitialize={() => void runToolAction("install")}
+          />
+        </>
       )}
     </PageLayout>
   );

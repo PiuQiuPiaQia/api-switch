@@ -1,4 +1,4 @@
-import type { Provider } from "@/types";
+import type { OpenCodeModel, Provider } from "@/types";
 import { openclawApi } from "@/lib/api/openclaw";
 import { providersApi } from "@/lib/api/providers";
 import {
@@ -7,8 +7,19 @@ import {
   setCodexWireApi,
 } from "@/utils/providerConfigUtils";
 import { PRODUCT } from "./config";
-import type { NewApiConnection, NewApiGroup, ProductScenario } from "./types";
-import { resolveGroupConnection } from "./scenarioConnection";
+import { dshApi } from "./api";
+import type {
+  DshApiProtocol,
+  DshManagedStatus,
+  NewApiConnection,
+  NewApiGroup,
+  ProductScenario,
+} from "./types";
+import {
+  resolveGroupConnection,
+  resolveScenarioBaseUrl,
+  type ScenarioApiFormat,
+} from "./scenarioConnection";
 
 export { resolveGroupConnection } from "./scenarioConnection";
 
@@ -100,6 +111,216 @@ function hermesApiMode(apiFormat: string | undefined): string {
   if (apiFormat === "anthropic") return "anthropic_messages";
   if (apiFormat === "openai_responses") return "codex_responses";
   return "chat_completions";
+}
+
+/** Wire protocols Dsh accepts, mapped from the scenario protocol ids. */
+export function dshApiMode(
+  apiFormat: string | undefined,
+): DshApiProtocol | null {
+  if (apiFormat === "openai_chat") return "openai-completions";
+  if (apiFormat === "openai_responses") return "openai-responses";
+  if (apiFormat === "anthropic") return "anthropic-messages";
+  return null;
+}
+
+/** Inverse of dshApiMode: the scenario protocol behind a Dsh wire protocol. */
+export function dshScenarioFormat(api: string | undefined): ScenarioApiFormat {
+  if (api === "anthropic-messages") return "anthropic";
+  if (api === "openai-responses") return "openai_responses";
+  return "openai_chat";
+}
+
+/** Dsh's Anthropic SDK appends /v1/messages itself; retain custom prefixes. */
+export function resolveDshBaseUrl(baseUrl: string, api: DshApiProtocol): string {
+  const resolved = resolveScenarioBaseUrl(baseUrl, undefined, dshScenarioFormat(api));
+  if (api !== "anthropic-messages") return resolved;
+  try {
+    const url = new URL(resolved);
+    url.pathname = url.pathname.replace(/\/v1\/?$/, "") || "/";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return resolved;
+  }
+}
+
+/**
+ * Compaction headroom Dsh reserves next to a request's max output tokens
+ * (compaction-basic's default headroomTokens).
+ */
+export const DSH_OUTPUT_HEADROOM = 65_536;
+
+/**
+ * Protect a Dsh model's output limit from vendor figures that eat the whole
+ * context window: Dsh reserves maxTokens plus headroom before deciding to
+ * compact, so a reply limit near the window leaves it nothing to compact
+ * with. Only when a real context figure exists is the vendor/user output
+ * limit held to min(output, max(1, max(window/4, window/2 - 65536))); without
+ * context numbers nothing is invented and the given limit stays as entered.
+ */
+export function protectedDshOutputLimit(
+  context: number | undefined,
+  output: number | undefined,
+): number | undefined {
+  const hasContext =
+    typeof context === "number" && Number.isFinite(context) && context > 0;
+  const hasOutput =
+    typeof output === "number" && Number.isFinite(output) && output > 0;
+
+  if (!hasContext) return hasOutput ? Math.floor(output) : undefined;
+
+  const room = Math.max(
+    1,
+    Math.floor(Math.max(context / 4, context / 2 - DSH_OUTPUT_HEADROOM)),
+  );
+  return hasOutput ? Math.min(Math.floor(output), room) : room;
+}
+
+/** Parse a positive finite number from user input; anything else is ignored. */
+export function parsePositiveLimit(value: string | number): number | undefined {
+  const raw = typeof value === "number" ? value : value.trim();
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+/** Model rows edited by the Dsh managed-provider form. */
+export interface DshModelDraft {
+  id: string;
+  name: string;
+  context: string | number;
+  output: string | number;
+}
+
+function cleanDshText(value: unknown): string {
+  return typeof value === "string"
+    ? value.replace(/[\u0000-\u001f\u007f]/g, "").trim()
+    : "";
+}
+
+/**
+ * Apply the Dsh form state to a managed provider: one explicit wire protocol
+ * for every model, a sanitized model catalog with optional context/output
+ * limits (output protected against window-eating figures), and an optional
+ * default model that must exist in the catalog.
+ */
+export function applyDshManagedSettings(
+  provider: Provider,
+  api: string,
+  models: DshModelDraft[],
+  defaultModel: string,
+): Provider {
+  const protocol = dshApiMode(api) ?? (isDshApiProtocol(api) ? api : null);
+  if (!protocol) {
+    throw new Error("请先为 Dsh 托管供应商选择模型协议");
+  }
+
+  const settingsConfig = asRecord(provider.settingsConfig);
+  const options = asRecord(settingsConfig.options);
+  const apiKey = typeof options.apiKey === "string" ? options.apiKey : "";
+  const rawBaseUrl = typeof options.baseURL === "string" ? options.baseURL : "";
+  const scenarioFormat = dshScenarioFormat(protocol);
+
+  const catalog: Record<string, OpenCodeModel> = {};
+  for (const draft of models) {
+    const id = cleanDshText(draft.id);
+    if (!id) continue;
+    const context = parsePositiveLimit(draft.context);
+    const output = parsePositiveLimit(draft.output);
+    const protectedOutput = protectedDshOutputLimit(context, output);
+    const entry: OpenCodeModel = { name: cleanDshText(draft.name) || id };
+    if (context !== undefined || protectedOutput !== undefined) {
+      entry.limit = {
+        ...(context !== undefined ? { context } : {}),
+        ...(protectedOutput !== undefined ? { output: protectedOutput } : {}),
+      };
+    }
+    catalog[id] = entry;
+  }
+
+  const normalizedDefault = cleanDshText(defaultModel);
+  if (normalizedDefault && !(normalizedDefault in catalog)) {
+    throw new Error("默认模型不在模型列表中，请先添加该模型或清空默认值");
+  }
+
+  const previousName = cleanDshText(settingsConfig.name);
+  const nextSettings: Record<string, unknown> = {
+    ...(previousName ? { name: previousName } : {}),
+    api: protocol,
+    options: {
+      baseURL: resolveDshBaseUrl(rawBaseUrl, protocol),
+      apiKey,
+    },
+    models: catalog,
+  };
+  if (normalizedDefault) nextSettings.defaultModel = normalizedDefault;
+
+  return {
+    ...provider,
+    settingsConfig: nextSettings,
+    meta: {
+      ...provider.meta,
+      apiFormat: scenarioFormat,
+    },
+  };
+}
+
+export function isDshApiProtocol(value: unknown): value is DshApiProtocol {
+  return (
+    value === "openai-completions" ||
+    value === "openai-responses" ||
+    value === "anthropic-messages"
+  );
+}
+
+/**
+ * Validate a Dsh managed settings payload before it reaches the dedicated
+ * backend command. The backend re-validates; this keeps form errors local.
+ */
+export function validateDshManagedSettings(
+  settingsConfig: Record<string, unknown>,
+): asserts settingsConfig is {
+  api: DshApiProtocol;
+  options: { baseURL: string; apiKey: string };
+  models: Record<string, OpenCodeModel>;
+  defaultModel?: string;
+} {
+  if (!isDshApiProtocol(settingsConfig.api)) {
+    throw new Error("Dsh 托管配置缺少有效的模型协议");
+  }
+  const options = asRecord(settingsConfig.options);
+  if (
+    typeof options.baseURL !== "string" ||
+    !options.baseURL.trim() ||
+    typeof options.apiKey !== "string" ||
+    !options.apiKey.trim()
+  ) {
+    throw new Error("Dsh 托管配置缺少可用的 Base URL 或访问密钥");
+  }
+  const models = asRecord(settingsConfig.models);
+  for (const [id, value] of Object.entries(models)) {
+    if (!id.trim()) throw new Error("Dsh 模型列表包含空模型 ID");
+    const model = asRecord(value);
+    const limit = asRecord(model.limit);
+    for (const field of ["context", "output"] as const) {
+      const limitValue = limit[field];
+      if (limitValue === undefined) continue;
+      if (
+        typeof limitValue !== "number" ||
+        !Number.isFinite(limitValue) ||
+        limitValue <= 0
+      ) {
+        throw new Error(`Dsh 模型 ${id} 的 ${field} 上限必须是有效正数`);
+      }
+    }
+  }
+  const defaultModel = settingsConfig.defaultModel;
+  if (
+    defaultModel !== undefined &&
+    (typeof defaultModel !== "string" ||
+      (defaultModel.trim() && !(defaultModel.trim() in models)))
+  ) {
+    throw new Error("Dsh 默认模型不在模型列表中");
+  }
 }
 
 export function buildManagedProvider(
@@ -290,6 +511,41 @@ export function buildManagedProvider(
           models: Array.isArray(previousSettings.models)
             ? previousSettings.models
             : [],
+        },
+      };
+    }
+
+    case "dsh": {
+      const previousSettings = asRecord(previous?.settingsConfig);
+      // The website group API never states a protocol, so only an explicit
+      // connection format (or the user's persisted choice) picks one; a
+      // rebuild must never guess over the user's saved protocol.
+      const api = isDshApiProtocol(previousSettings.api)
+        ? previousSettings.api
+        : dshApiMode(connection.apiFormat);
+      const settingsConfig: Record<string, unknown> = {
+        ...previousSettings,
+        options: {
+          ...asRecord(previousSettings.options),
+          baseURL: api
+            ? resolveDshBaseUrl(connection.baseUrl, api)
+            : connection.baseUrl,
+          apiKey: connection.apiKey,
+        },
+        models: asRecord(previousSettings.models),
+      };
+      if (api) settingsConfig.api = api;
+      else delete settingsConfig.api;
+      if (typeof previousSettings.defaultModel === "string") {
+        settingsConfig.defaultModel = previousSettings.defaultModel;
+      }
+
+      return {
+        ...common,
+        settingsConfig,
+        meta: {
+          ...common.meta,
+          ...(api ? { apiFormat: dshScenarioFormat(api) } : {}),
         },
       };
     }
@@ -507,4 +763,27 @@ export async function applyPreparedManagedConfiguration(
       });
     }
   }
+}
+
+/**
+ * Apply a Dsh managed provider through the dedicated backend command. Dsh
+ * profiles live in ~/.dsh and the backend owns multi-profile writes, desktop
+ * conflicts, credentials, and rollback — this must never fall back to the
+ * generic providers add/switch path.
+ */
+export async function applyDshManagedConfiguration(
+  provider: Provider,
+): Promise<DshManagedStatus> {
+  if (provider.id !== PRODUCT.managedProviderId) {
+    throw new Error("托管供应商标识无效，未写入本机配置");
+  }
+  const settingsConfig = asRecord(provider.settingsConfig);
+  validateDshManagedSettings(settingsConfig);
+  validateManagedConnection({
+    baseUrl: asRecord(settingsConfig.options).baseURL as string,
+    apiKey: asRecord(settingsConfig.options).apiKey as string,
+    apiFormat: settingsConfig.api as string,
+  });
+
+  return await dshApi.applyManagedProvider(provider);
 }

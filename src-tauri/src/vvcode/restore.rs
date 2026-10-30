@@ -140,6 +140,7 @@ fn restore_official_configuration_internal(
     match app_type {
         AppType::OpenClaw => restore_openclaw_defaults(state),
         AppType::Hermes => restore_hermes_defaults(state),
+        AppType::Dsh => crate::vvcode::dsh_managed::release_managed(state),
         _ => Err(AppError::Message(
             "当前应用不支持恢复官方默认配置".to_string(),
         )),

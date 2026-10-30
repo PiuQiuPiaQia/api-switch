@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-import { newApiApi } from "./api";
+import { newApiApi, dshApi } from "./api";
 
 describe("newApiApi", () => {
   beforeEach(() => {
@@ -104,5 +104,46 @@ describe("newApiApi", () => {
     expect(invokeMock).toHaveBeenCalledWith("restore_official_configuration", {
       app: "codex",
     });
+  });
+});
+
+describe("dshApi", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it("applies a managed provider through the dedicated Dsh command", async () => {
+    const status = {
+      profileNames: ["default"],
+      conflicts: [],
+      warnings: [],
+      managed: true,
+    };
+    invokeMock.mockResolvedValue(status);
+    const provider = {
+      id: "vvcode-managed",
+      name: "VV Code · 日常组",
+      settingsConfig: { api: "openai-responses" },
+    };
+
+    await expect(
+      dshApi.applyManagedProvider(provider as never),
+    ).resolves.toEqual(status);
+    expect(invokeMock).toHaveBeenCalledWith("vvcode_dsh_apply_managed", {
+      provider,
+    });
+  });
+
+  it("reads the managed status without polling side effects", async () => {
+    const status = {
+      profileNames: [],
+      conflicts: ["profile default drifted"],
+      warnings: [],
+      managed: true,
+    };
+    invokeMock.mockResolvedValue(status);
+
+    await expect(dshApi.getManagedStatus()).resolves.toEqual(status);
+    expect(invokeMock).toHaveBeenCalledWith("vvcode_dsh_get_managed_status");
   });
 });

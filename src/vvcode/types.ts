@@ -7,7 +7,8 @@ export type ScenarioId =
   | "gemini"
   | "opencode"
   | "openclaw"
-  | "hermes";
+  | "hermes"
+  | "dsh";
 
 export interface ProductScenario {
   id: ScenarioId;
@@ -20,6 +21,7 @@ export interface ProductScenario {
     | "opencode"
     | "openclaw"
     | "hermes"
+    | "dsh"
     | null;
   name: string;
   shortName: string;
@@ -29,7 +31,14 @@ export interface ProductScenario {
     url: string;
   };
   accent: string;
-  icon: "claude" | "openai" | "gemini" | "opencode" | "openclaw" | "hermes";
+  icon:
+    | "claude"
+    | "openai"
+    | "gemini"
+    | "opencode"
+    | "openclaw"
+    | "hermes"
+    | "deepseek";
 }
 
 export interface NewApiSession {
@@ -40,7 +49,6 @@ export interface NewApiSession {
   role: number;
   createdAt: number;
 }
-
 
 export interface NewApiUser {
   id: number;
@@ -96,6 +104,26 @@ export interface NewApiBootstrap {
   user: NewApiUser;
   groups: NewApiGroup[];
   source: "desktop-v1" | "vscode-legacy" | "preview" | string;
+}
+
+/**
+ * Wire protocols Dsh (DeepSeek Harness) accepts for a custom model provider.
+ * A managed Dsh provider runs every model on a single protocol; the website
+ * group API exposes no protocol, so the UI requires an explicit choice.
+ */
+export type DshApiProtocol =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages";
+
+/** Status payload returned by the dedicated Dsh managed-provider backend. */
+export interface DshManagedStatus {
+  profileNames: string[];
+  conflicts: string[];
+  warnings: string[];
+  managed?: boolean;
+  /** Official desktop installation can configure Dsh without the CLI. */
+  desktopAvailable?: boolean;
 }
 
 export interface NewApiInfoRoute {

@@ -1,16 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Provider } from "@/types";
 import { PRODUCT } from "./config";
 import {
   applyClaudeCoreModelRoutes,
   applyAgentModelCatalog,
+  applyDshManagedSettings,
+  applyDshManagedConfiguration,
   applyManagedDefaultModel,
   applyOpenCodeModelCatalog,
   buildManagedProvider,
+  dshApiMode,
+  dshScenarioFormat,
+  parsePositiveLimit,
+  protectedDshOutputLimit,
   resolveGroupConnection,
+  resolveDshBaseUrl,
   validateManagedConnection,
 } from "./configuration";
 import type { NewApiGroup, NewApiModel, ProductScenario } from "./types";
+
+const dshMocks = vi.hoisted(() => ({
+  applyManagedProvider: vi.fn(),
+}));
+
+vi.mock("./api", () => ({
+  dshApi: { applyManagedProvider: dshMocks.applyManagedProvider },
+}));
 
 const model: NewApiModel = {
   id: "model-primary",
@@ -398,5 +413,246 @@ describe("managed provider configuration", () => {
     expect(hermes.settingsConfig.models).toEqual([
       { id: "model-hermes", name: "Hermes" },
     ]);
+  });
+});
+
+describe("dsh managed provider", () => {
+  const dshGroup: NewApiGroup = {
+    ...group,
+    connections: {
+      dsh: {
+        baseUrl: "https://dsh.example/v1",
+        apiKey: "sk-dsh",
+        apiFormat: "openai_responses",
+      },
+    },
+  };
+
+  beforeEach(() => {
+    dshMocks.applyManagedProvider.mockReset();
+  });
+
+  it("maps each explicit scenario protocol to its Dsh wire protocol", () => {
+    expect(dshApiMode("openai_chat")).toBe("openai-completions");
+    expect(dshApiMode("openai_responses")).toBe("openai-responses");
+    expect(dshApiMode("anthropic")).toBe("anthropic-messages");
+    expect(dshApiMode(undefined)).toBeNull();
+
+    expect(dshScenarioFormat("openai-completions")).toBe("openai_chat");
+    expect(dshScenarioFormat("openai-responses")).toBe("openai_responses");
+    expect(dshScenarioFormat("anthropic-messages")).toBe("anthropic");
+  });
+
+  it("builds a Dsh provider from an explicit protocol connection", () => {
+    const provider = buildManagedProvider(scenario("dsh"), dshGroup);
+    expect(provider.id).toBe(PRODUCT.managedProviderId);
+    expect(provider.settingsConfig.api).toBe("openai-responses");
+    expect(provider.settingsConfig.options).toEqual({
+      baseURL: "https://dsh.example/v1",
+      apiKey: "sk-dsh",
+    });
+    expect(provider.meta?.apiFormat).toBe("openai_responses");
+  });
+
+  it("does not guess a Dsh protocol when the website group omits one", () => {
+    const provider = buildManagedProvider(scenario("dsh"), group);
+    expect(provider.settingsConfig.api).toBeUndefined();
+    expect(provider.settingsConfig.options.baseURL).toBe(
+      "https://fallback.example/v1",
+    );
+    expect(provider.meta?.apiFormat).toBeUndefined();
+  });
+
+  it("preserves the user-selected Dsh protocol across rebuilds", () => {
+    // The group exposes no protocol; the previous saved choice must survive
+    // a rebuild instead of being reset to an inferred default.
+    const applied = buildManagedProvider(scenario("dsh"), group, {
+      id: PRODUCT.managedProviderId,
+      name: `${PRODUCT.brand.name} · ${group.name}`,
+      settingsConfig: {
+        api: "anthropic-messages",
+        options: {
+          baseURL: "https://fallback.example/v1",
+          apiKey: "sk-fallback",
+        },
+        models: { "claude-sonnet": { name: "Sonnet" } },
+        defaultModel: "claude-sonnet",
+      },
+    });
+    expect(applied.settingsConfig.api).toBe("anthropic-messages");
+    expect(applied.settingsConfig.models).toEqual({
+      "claude-sonnet": { name: "Sonnet" },
+    });
+    expect(applied.settingsConfig.defaultModel).toBe("claude-sonnet");
+    expect(applied.meta?.apiFormat).toBe("anthropic");
+  });
+
+  it("applies form state as a single-protocol catalog with a default model", () => {
+    const base = buildManagedProvider(scenario("dsh"), dshGroup);
+    const provider = applyDshManagedSettings(
+      base,
+      "anthropic-messages",
+      [
+        { id: "claude-sonnet", name: "  ", context: "200000", output: "64000" },
+        { id: "  ", name: "dropped", context: "1", output: "1" },
+        {
+          id: "claude-opus",
+          name: "Opus",
+          context: "not-a-number",
+          output: "-5",
+        },
+      ],
+      "claude-sonnet",
+    );
+
+    expect(provider.settingsConfig.api).toBe("anthropic-messages");
+    // Invalid ids are dropped; blank names fall back to the model id; invalid
+    // limits are ignored rather than invented. Output 64000 on a 200000
+    // window is protected down to window/4 = 50000.
+    expect(provider.settingsConfig.models).toEqual({
+      "claude-sonnet": {
+        name: "claude-sonnet",
+        limit: { context: 200000, output: 50000 },
+      },
+      "claude-opus": { name: "Opus" },
+    });
+    expect(provider.settingsConfig.defaultModel).toBe("claude-sonnet");
+    // Dsh's Anthropic SDK appends /v1/messages itself, so a standard /v1
+    // suffix on the connection is stripped instead of being doubled.
+    expect(provider.settingsConfig.options.baseURL).toBe(
+      "https://dsh.example",
+    );
+    expect(provider.settingsConfig.options.apiKey).toBe("sk-dsh");
+    expect(provider.meta?.apiFormat).toBe("anthropic");
+  });
+
+  it("adds the conventional /v1 path when an OpenAI protocol has none", () => {
+    const originOnlyGroup: NewApiGroup = {
+      ...group,
+      baseUrl: "https://dsh.example",
+      connections: {
+        dsh: {
+          baseUrl: "https://dsh.example",
+          apiKey: "sk-dsh",
+          apiFormat: "openai_chat",
+        },
+      },
+    };
+    const base = buildManagedProvider(scenario("dsh"), originOnlyGroup);
+    const provider = applyDshManagedSettings(
+      base,
+      "openai-completions",
+      [],
+      "",
+    );
+    expect(provider.settingsConfig.options.baseURL).toBe(
+      "https://dsh.example/v1",
+    );
+    expect(provider.settingsConfig.models).toEqual({});
+    expect("defaultModel" in provider.settingsConfig).toBe(false);
+  });
+
+  it("requires a protocol and a catalog-listed default model", () => {
+    const base = buildManagedProvider(scenario("dsh"), dshGroup);
+    expect(() =>
+      applyDshManagedSettings(
+        base,
+        "",
+        [{ id: "m", name: "", context: "", output: "" }],
+        "",
+      ),
+    ).toThrow("请先为 Dsh 托管供应商选择模型协议");
+    expect(() =>
+      applyDshManagedSettings(
+        base,
+        "openai-responses",
+        [{ id: "m", name: "", context: "", output: "" }],
+        "missing-model",
+      ),
+    ).toThrow("默认模型不在模型列表中");
+  });
+
+  it("keeps the protocol endpoint when rebuilding and reapplying an origin-only group", async () => {
+    const originGroup = { ...group, connections: undefined, baseUrl: "https://gateway.example" };
+    const base = buildManagedProvider(scenario("dsh"), originGroup);
+    const applied = applyDshManagedSettings(base, "openai-responses", [{ id: "test", name: "Test", context: "", output: "" }], "test");
+    const rebuilt = buildManagedProvider(scenario("dsh"), originGroup, applied);
+    expect(rebuilt.settingsConfig.options.baseURL).toBe("https://gateway.example/v1");
+    dshMocks.applyManagedProvider.mockResolvedValue({profileNames:["web"], conflicts:[], warnings:[]});
+    await applyDshManagedConfiguration(rebuilt);
+    expect(dshMocks.applyManagedProvider.mock.calls[0][0].settingsConfig.options.baseURL).toBe("https://gateway.example/v1");
+  });
+
+  it("switches standard SDK paths without stripping custom prefixes", () => {
+    expect(resolveDshBaseUrl("https://gateway.example/v1", "anthropic-messages")).toBe("https://gateway.example");
+    expect(resolveDshBaseUrl("https://gateway.example/team/v1", "anthropic-messages")).toBe("https://gateway.example/team");
+    expect(resolveDshBaseUrl("https://gateway.example/anthropic", "anthropic-messages")).toBe("https://gateway.example/anthropic");
+    expect(resolveDshBaseUrl("https://gateway.example", "openai-completions")).toBe("https://gateway.example/v1");
+    expect(resolveDshBaseUrl("https://gateway.example/api/paas/v4", "openai-responses")).toBe("https://gateway.example/api/paas/v4");
+  });
+
+  it("caps output limits to keep Dsh compaction budget", () => {
+    // Magpie-derived protection: min(output, max(1, max(window/4,
+    // window/2 - 65536))) — only with a real context figure.
+    expect(protectedDshOutputLimit(500_000, 393_216)).toBe(184_464);
+    expect(protectedDshOutputLimit(131_072, 65_536)).toBe(32_768);
+    expect(protectedDshOutputLimit(1_000_000, 393_216)).toBe(393_216);
+    // No context figure: never invent one, keep the entered limit as-is.
+    expect(protectedDshOutputLimit(undefined, 8_192)).toBe(8_192);
+    expect(protectedDshOutputLimit(undefined, undefined)).toBeUndefined();
+    // Context without an output limit still reserves a protected budget.
+    expect(protectedDshOutputLimit(100_000, undefined)).toBe(25_000);
+  });
+
+  it("parses only positive finite limits from user input", () => {
+    expect(parsePositiveLimit(" 4096 ")).toBe(4096);
+    expect(parsePositiveLimit("12.9")).toBeUndefined();
+    expect(parsePositiveLimit("0.5")).toBeUndefined();
+    expect(parsePositiveLimit(2048)).toBe(2048);
+    expect(parsePositiveLimit("0")).toBeUndefined();
+    expect(parsePositiveLimit("-3")).toBeUndefined();
+    expect(parsePositiveLimit("abc")).toBeUndefined();
+    expect(parsePositiveLimit("")).toBeUndefined();
+  });
+
+  it("applies through the dedicated backend command, never providers add/switch", async () => {
+    const status = {
+      profileNames: ["default", "work"],
+      conflicts: [],
+      warnings: [],
+      managed: true,
+    };
+    dshMocks.applyManagedProvider.mockResolvedValue(status);
+    const provider = applyDshManagedSettings(
+      buildManagedProvider(scenario("dsh"), dshGroup),
+      "openai-responses",
+      [{ id: "gpt-5.4", name: "GPT", context: "400000", output: "128000" }],
+      "gpt-5.4",
+    );
+
+    const result = await applyDshManagedConfiguration(provider);
+
+    expect(result).toEqual(status);
+    expect(dshMocks.applyManagedProvider).toHaveBeenCalledOnce();
+    expect(dshMocks.applyManagedProvider.mock.calls[0][0]).toBe(provider);
+  });
+
+  it("rejects invalid payloads locally before reaching the backend", async () => {
+    // The website group exposes no protocol and the form never applied one.
+    const provider = buildManagedProvider(scenario("dsh"), group);
+    await expect(applyDshManagedConfiguration(provider)).rejects.toThrow(
+      "Dsh 托管配置缺少有效的模型协议",
+    );
+
+    const wrongId = applyDshManagedSettings(
+      buildManagedProvider(scenario("dsh"), dshGroup),
+      "openai-responses",
+      [{ id: "m", name: "", context: "", output: "" }],
+      "",
+    );
+    await expect(
+      applyDshManagedConfiguration({ ...wrongId, id: "other-provider" }),
+    ).rejects.toThrow("托管供应商标识无效");
+    expect(dshMocks.applyManagedProvider).not.toHaveBeenCalled();
   });
 });

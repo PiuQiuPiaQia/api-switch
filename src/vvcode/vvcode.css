@@ -3694,7 +3694,8 @@ body:has(.vv-app-loading) {
 
 .vv-core-routes__grid input,
 .vv-core-default-model input,
-.vv-core-opencode-row input {
+.vv-core-opencode-row input,
+.vv-core-dsh-model-row input {
   width: 100%;
   min-width: 0;
   height: 31px;
@@ -3708,7 +3709,8 @@ body:has(.vv-app-loading) {
 
 .vv-core-routes__grid input::placeholder,
 .vv-core-default-model input::placeholder,
-.vv-core-opencode-row input::placeholder {
+.vv-core-opencode-row input::placeholder,
+.vv-core-dsh-model-row input::placeholder {
   color: #b1b2bf;
 }
 
@@ -3823,6 +3825,206 @@ body:has(.vv-app-loading) {
   color: #b24b58;
   border-color: #eccbd0;
   background: #fff8f9;
+}
+
+/* Dsh：协议 + 默认模型同一行，复用 routes 网格节奏 */
+.vv-core-dsh-basics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.vv-core-dsh-basics > .vv-core-default-model {
+  margin-top: 0;
+}
+
+.vv-core-dsh-basics > .vv-core-model-order-hint {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+}
+
+.vv-core-dsh-protocol__select {
+  width: 100%;
+  min-width: 0;
+  height: 31px;
+  padding: 0 26px 0 8px;
+  border: 1px solid #dedde8;
+  border-radius: 8px;
+  color: #46475a;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239697a7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  font-size: 11px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.vv-core-dsh-protocol__select.is-empty {
+  color: #b1b2bf;
+}
+
+.vv-core-dsh-protocol__select option {
+  color: #46475a;
+}
+
+.vv-core-dsh-protocol__select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--scenario-accent) 55%, #dedde8);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--scenario-accent) 14%, transparent);
+}
+
+.vv-core-dsh-models__heading,
+.vv-core-dsh-model-row {
+  grid-template-columns:
+    minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.75fr)
+    minmax(0, 0.75fr) 31px;
+}
+
+.vv-core-dsh-model-row {
+  display: grid;
+  gap: 7px;
+}
+
+.vv-core-dsh-model-row .vv-core-opencode-remove {
+  height: 31px;
+}
+
+.vv-core-dsh-limit-input {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dsh 状态面板：与模型卡片同一套边框、圆角、字号 */
+.vv-dsh-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 11px;
+  padding: 9px 10px;
+  border: 1px solid #e2e1e9;
+  border-radius: 9px;
+  background: #fff;
+  color: #77798c;
+  font-size: 10px;
+}
+
+.vv-dsh-status > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.vv-dsh-status.is-loading {
+  align-items: center;
+  color: #898b9c;
+  font-size: 11px;
+}
+
+.vv-dsh-status__body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.vv-dsh-status__body strong {
+  color: #35364b;
+  font-size: 12px;
+  font-weight: 680;
+  line-height: 16px;
+}
+
+.vv-dsh-status__body small {
+  color: #8f90a0;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.vv-dsh-status__list {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0 0;
+  padding-left: 14px;
+  color: #8a5a2b;
+  font-size: 10px;
+  line-height: 1.45;
+  list-style: disc;
+  overflow-wrap: anywhere;
+}
+
+.vv-dsh-status__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 与 .vv-core-routes__heading button（获取/添加模型）同尺寸 */
+.vv-dsh-status__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #dedde8;
+  border-radius: 7px;
+  color: #6f7183;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vv-dsh-status__action:hover:not(:disabled) {
+  color: #46475a;
+  border-color: #c9c8d6;
+}
+
+.vv-dsh-status__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vv-dsh-status__action.is-primary {
+  border-color: #dddaf1;
+  color: #6257c9;
+  background: #f8f7ff;
+}
+
+.vv-dsh-status__action.is-primary:hover:not(:disabled) {
+  border-color: #c9c5f4;
+  color: #5046b8;
+}
+
+.vv-dsh-status.is-ready > svg {
+  color: #37805f;
+}
+
+.vv-dsh-status.is-drift {
+  border-color: #ecdcc4;
+  background: #fffbf5;
+}
+
+.vv-dsh-status.is-drift > svg {
+  color: #b07433;
+}
+
+.vv-dsh-status.is-missing {
+  border-style: dashed;
+  background: #fcfcfd;
+}
+
+.vv-dsh-status.is-missing > svg {
+  color: #9697a7;
+}
+
+.vv-dsh-status.is-error {
+  border-color: #eccbd0;
+  background: #fff8f9;
+}
+
+.vv-dsh-status.is-error > svg {
+  color: #ad4f59;
 }
 
 .vv-config-actions {
@@ -4342,6 +4544,10 @@ body:has(.vv-app-loading) {
 
   .vv-core-opencode-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 31px;
+  }
+
+  .vv-core-dsh-basics {
+    grid-template-columns: 1fr;
   }
 
   .vv-account-hero {

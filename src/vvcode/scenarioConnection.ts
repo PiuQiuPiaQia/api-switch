@@ -6,6 +6,8 @@ type ScenarioApiFormat =
   | "openai_responses"
   | "gemini_native";
 
+export type { ScenarioApiFormat };
+
 function canonicalApiFormat(
   value: string | undefined,
 ): ScenarioApiFormat | null {
@@ -43,7 +45,7 @@ function inferredApiFormat(
   scenario: ProductScenario,
   group: NewApiGroup,
   connection: NewApiConnection,
-): ScenarioApiFormat {
+): ScenarioApiFormat | null {
   const explicit = canonicalApiFormat(connection.apiFormat);
   if (explicit) return explicit;
 
@@ -51,6 +53,12 @@ function inferredApiFormat(
   if (scenario.id === "claude-desktop") return "anthropic";
   if (scenario.id === "codex") return "openai_responses";
   if (scenario.id === "gemini") return "gemini_native";
+
+  // The website group API only exposes ratio/description; it never states a
+  // protocol. Dsh accepts three wire protocols and a managed provider runs
+  // every model on one of them, so guessing would silently mix protocols.
+  // The Dsh form requires an explicit choice instead.
+  if (scenario.id === "dsh") return null;
 
   const provider = `${group.apiProvider} ${group.ccProvider}`.toLowerCase();
   if (provider.includes("anthropic")) return "anthropic";
@@ -85,12 +93,14 @@ function joinPaths(prefix: string, suffix: string): string {
  * The selected route chooses the network origin (and may contain a shared
  * prefix). The connection returned by bootstrap remains the source of truth
  * for protocol-specific paths. When both are origin-only, OpenAI-compatible
- * scenarios receive the conventional `/v1` base path.
+ * scenarios receive the conventional `/v1` base path. Without a resolved
+ * protocol (Dsh before an explicit choice) the connection path is kept as
+ * the bootstrap delivered it.
  */
 export function resolveScenarioBaseUrl(
   connectionBaseUrl: string,
   routeBaseUrl: string | undefined,
-  apiFormat: ScenarioApiFormat,
+  apiFormat: ScenarioApiFormat | null,
 ): string {
   const connectionText = connectionBaseUrl.trim().replace(/\/+$/, "");
   const routeText = routeBaseUrl?.trim().replace(/\/+$/, "") ?? "";
@@ -98,7 +108,8 @@ export function resolveScenarioBaseUrl(
   try {
     const connectionUrl = new URL(connectionText);
     const connectionPath =
-      normalizedPath(connectionUrl.pathname) || defaultPath(apiFormat);
+      normalizedPath(connectionUrl.pathname) ||
+      (apiFormat ? defaultPath(apiFormat) : "");
 
     if (!routeText) {
       connectionUrl.pathname = connectionPath || "/";
@@ -134,7 +145,7 @@ export function resolveGroupConnection(
 
   return {
     ...connection,
-    apiFormat,
+    apiFormat: apiFormat ?? undefined,
     baseUrl: resolveScenarioBaseUrl(
       connection.baseUrl,
       routeBaseUrl,
